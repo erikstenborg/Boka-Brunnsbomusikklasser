@@ -17,8 +17,28 @@ import { relations } from "drizzle-orm";
 
 // Enums for better type safety and database constraints
 export const eventTypeEnum = pgEnum("event_type", ["luciatag", "sjungande_julgran"]);
-export const bookingStatusEnum = pgEnum("booking_status", ["pending", "reviewing", "approved", "completed"]);
 export const activityActionEnum = pgEnum("activity_action", ["created", "status_changed", "assigned", "updated", "notes_added"]);
+
+// Workflow statuses table for configurable booking statuses
+export const workflowStatuses = pgTable("workflow_statuses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: varchar("slug", { length: 50 }).notNull().unique(), // Machine-readable identifier (e.g., "pending", "approved")
+  name: varchar("name", { length: 100 }).notNull(), // Human-readable Swedish name (e.g., "Väntar på granskning")
+  displayOrder: integer("display_order").notNull().default(0), // Order for kanban columns and dropdowns
+  color: varchar("color", { length: 20 }).default("gray"), // Color for UI display (e.g., "blue", "green", "red")
+  isDefault: boolean("is_default").default(false), // Whether this is the default status for new bookings
+  isFinal: boolean("is_final").default(false), // Whether this status represents completion of the workflow
+  isActive: boolean("is_active").default(true), // Whether this status is currently active/usable
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+}, (table) => [
+  // Ensure only one default status exists
+  index("idx_workflow_statuses_default").on(table.isDefault),
+  // Index for ordering in kanban and dropdowns
+  index("idx_workflow_statuses_order").on(table.displayOrder, table.isActive),
+  // Index for active status lookups
+  index("idx_workflow_statuses_active").on(table.isActive),
+]);
 
 // Session storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
@@ -55,22 +75,27 @@ export const eventBookings = pgTable("event_bookings", {
   startAt: timestamp("start_at", { withTimezone: true }).notNull(), // Combined date and time with timezone
   durationMinutes: integer("duration_minutes").notNull(), // Duration in minutes for precise scheduling
   additionalNotes: text("additional_notes"),
-  status: bookingStatusEnum("status").notNull().default("pending"),
+  statusId: varchar("status_id").notNull(), // Foreign key to workflow_statuses
   assignedTo: varchar("assigned_to"), // Foreign key to users.id
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 }, (table) => [
   // Performance indexes for common queries
-  index("idx_event_bookings_status").on(table.status),
+  index("idx_event_bookings_status").on(table.statusId),
   index("idx_event_bookings_start_at").on(table.startAt),
   index("idx_event_bookings_assigned_to").on(table.assignedTo),
-  index("idx_event_bookings_calendar").on(table.startAt, table.status), // Composite index for calendar queries
+  index("idx_event_bookings_calendar").on(table.startAt, table.statusId), // Composite index for calendar queries
   index("idx_event_bookings_event_type").on(table.eventType),
   // Foreign key constraints
   foreignKey({
     columns: [table.assignedTo],
     foreignColumns: [users.id],
     name: "fk_event_bookings_assigned_to"
+  }),
+  foreignKey({
+    columns: [table.statusId],
+    foreignColumns: [workflowStatuses.id],
+    name: "fk_event_bookings_status_id"
   }),
 ]);
 
@@ -108,10 +133,18 @@ export const usersRelations = relations(users, ({ many }) => ({
   activityLogs: many(activityLogs),
 }));
 
+export const workflowStatusesRelations = relations(workflowStatuses, ({ many }) => ({
+  bookings: many(eventBookings),
+}));
+
 export const eventBookingsRelations = relations(eventBookings, ({ one, many }) => ({
   assignedUser: one(users, {
     fields: [eventBookings.assignedTo],
     references: [users.id],
+  }),
+  status: one(workflowStatuses, {
+    fields: [eventBookings.statusId],
+    references: [workflowStatuses.id],
   }),
   activityLogs: many(activityLogs),
 }));
@@ -148,20 +181,20 @@ export const insertEventBookingSchema = createInsertSchema(eventBookings)
 
 export const updateEventBookingSchema = createInsertSchema(eventBookings)
   .pick({
-    status: true,
+    statusId: true,
     assignedTo: true,
     additionalNotes: true,
   })
   .extend({
-    // Explicitly validate enum values for better type safety
-    status: z.enum(["pending", "reviewing", "approved", "completed"]).optional(),
+    // Status ID must be a valid UUID string
+    statusId: z.string().uuid().optional(),
     assignedTo: z.string().optional(),
   });
 
 // Admin-specific schemas for kanban workflow operations
 export const updateBookingStatusSchema = z.object({
-  status: z.enum(["pending", "reviewing", "approved", "completed"], {
-    required_error: "Status is required",
+  statusId: z.string().uuid({
+    message: "Valid status ID is required",
   }),
 });
 
@@ -183,12 +216,52 @@ export const eventBookingFormSchema = z.object({
   additionalNotes: z.string().optional(),
 });
 
+// Workflow status schemas
+export const insertWorkflowStatusSchema = createInsertSchema(workflowStatuses)
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    slug: z.string().min(1).max(50).regex(/^[a-z_]+$/, "Slug must contain only lowercase letters and underscores"),
+    name: z.string().min(1).max(100),
+    displayOrder: z.number().int().min(0).default(0),
+    color: z.string().min(1).max(20).default("gray"),
+    isDefault: z.boolean().default(false),
+    isFinal: z.boolean().default(false),
+    isActive: z.boolean().default(true),
+  });
+
+export const updateWorkflowStatusSchema = createInsertSchema(workflowStatuses)
+  .pick({
+    name: true,
+    displayOrder: true,
+    color: true,
+    isDefault: true,
+    isFinal: true,
+    isActive: true,
+  })
+  .extend({
+    name: z.string().min(1).max(100).optional(),
+    displayOrder: z.number().int().min(0).optional(),
+    color: z.string().min(1).max(20).optional(),
+    isDefault: z.boolean().optional(),
+    isFinal: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+  });
+
 export type InsertEventBooking = z.infer<typeof insertEventBookingSchema>;
 export type UpdateEventBooking = z.infer<typeof updateEventBookingSchema>;
 export type UpdateBookingStatus = z.infer<typeof updateBookingStatusSchema>;
 export type AssignBooking = z.infer<typeof assignBookingSchema>;
 export type EventBookingForm = z.infer<typeof eventBookingFormSchema>;
 export type EventBooking = typeof eventBookings.$inferSelect;
+
+// Workflow status types
+export type WorkflowStatus = typeof workflowStatuses.$inferSelect;
+export type InsertWorkflowStatus = z.infer<typeof insertWorkflowStatusSchema>;
+export type UpdateWorkflowStatus = z.infer<typeof updateWorkflowStatusSchema>;
 
 // Activity log schemas with updated action types
 export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({
@@ -201,5 +274,9 @@ export type ActivityLog = typeof activityLogs.$inferSelect;
 
 // Helper types for enum values
 export type EventType = typeof eventBookings.eventType.enumValues[number];
-export type BookingStatus = typeof eventBookings.status.enumValues[number];
 export type ActivityAction = typeof activityLogs.action.enumValues[number];
+
+// Extended booking type with status relation
+export type EventBookingWithStatus = EventBooking & {
+  status: WorkflowStatus;
+};

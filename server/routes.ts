@@ -9,12 +9,16 @@ import {
   updateBookingStatusSchema,
   assignBookingSchema,
   insertActivityLogSchema,
+  insertWorkflowStatusSchema,
+  updateWorkflowStatusSchema,
   type EventBookingForm,
   type UpdateEventBooking,
   type UpdateBookingStatus,
   type AssignBooking,
-  type BookingStatus,
   type EventType,
+  type WorkflowStatus,
+  type InsertWorkflowStatus,
+  type UpdateWorkflowStatus,
 } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -115,7 +119,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const {
-        status,
+        statusIds,
+        statusSlugs,
         eventType,
         assignedTo,
         startDate,
@@ -124,10 +129,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const filters: any = {};
       
-      if (status) {
-        // Handle multiple status values
-        const statusArray = Array.isArray(status) ? status : [status];
-        filters.status = statusArray as BookingStatus[];
+      if (statusIds) {
+        // Handle multiple status ID values
+        const statusIdArray = Array.isArray(statusIds) ? statusIds : [statusIds];
+        filters.statusIds = statusIdArray as string[];
+      }
+      
+      if (statusSlugs) {
+        // Handle multiple status slug values (for backward compatibility)
+        const statusSlugArray = Array.isArray(statusSlugs) ? statusSlugs : [statusSlugs];
+        filters.statusSlugs = statusSlugArray as string[];
       }
       
       if (eventType) {
@@ -293,7 +304,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!adminUser) return;
       
       const {
-        status,
+        statusIds,
+        statusSlugs,
         eventType,
         assignedTo,
         startDate,
@@ -302,10 +314,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const filters: any = {};
       
-      if (status) {
-        // Handle multiple status values for kanban columns
-        const statusArray = Array.isArray(status) ? status : [status];
-        filters.status = statusArray as BookingStatus[];
+      if (statusIds) {
+        // Handle multiple status ID values for kanban columns
+        const statusIdArray = Array.isArray(statusIds) ? statusIds : [statusIds];
+        filters.statusIds = statusIdArray as string[];
+      }
+      
+      if (statusSlugs) {
+        // Handle multiple status slug values for kanban columns
+        const statusSlugArray = Array.isArray(statusSlugs) ? statusSlugs : [statusSlugs];
+        filters.statusSlugs = statusSlugArray as string[];
       }
       
       if (eventType) {
@@ -383,8 +401,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const updatedBooking = await storage.updateEventBooking(req.params.id, {
-        status: statusUpdate.status
-      });
+        statusId: statusUpdate.statusId
+      }, adminUser.id, `${adminUser.firstName} ${adminUser.lastName}`.trim() || adminUser.email || 'Admin');
       
       if (!updatedBooking) {
         return res.status(500).json({ 
@@ -577,6 +595,203 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         success: false, 
         error: 'Failed to fetch calendar bookings' 
+      });
+    }
+  });
+  
+  // Workflow Status Management Routes (Admin only)
+  
+  // GET /api/admin/workflow-statuses - Get all workflow statuses
+  app.get('/api/admin/workflow-statuses', isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user is admin
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user?.isAdmin) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Access denied. Admin privileges required.' 
+        });
+      }
+
+      const { isActive } = req.query;
+      const filters: any = {};
+      
+      if (isActive !== undefined) {
+        filters.isActive = isActive === 'true';
+      }
+      
+      const statuses = await storage.getWorkflowStatuses(filters);
+      res.json({ success: true, statuses });
+    } catch (error) {
+      console.error('Error fetching workflow statuses:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to fetch workflow statuses' 
+      });
+    }
+  });
+  
+  // GET /api/admin/workflow-statuses/:id - Get specific workflow status
+  app.get('/api/admin/workflow-statuses/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user is admin
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user?.isAdmin) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Access denied. Admin privileges required.' 
+        });
+      }
+      
+      const status = await storage.getWorkflowStatus(req.params.id);
+      
+      if (!status) {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Workflow status not found' 
+        });
+      }
+      
+      res.json({ success: true, status });
+    } catch (error) {
+      console.error('Error fetching workflow status:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to fetch workflow status' 
+      });
+    }
+  });
+  
+  // POST /api/admin/workflow-statuses - Create new workflow status
+  app.post('/api/admin/workflow-statuses', isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user is admin
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user?.isAdmin) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Access denied. Admin privileges required.' 
+        });
+      }
+      
+      const statusData = insertWorkflowStatusSchema.parse(req.body);
+      const status = await storage.createWorkflowStatus(statusData);
+      
+      // Log the creation
+      const adminUserName = `${user.firstName} ${user.lastName}`.trim() || user.email || 'Admin';
+      console.log(`Admin ${adminUserName} created workflow status: ${status.name} (${status.slug})`);
+      
+      res.status(201).json({ success: true, status });
+    } catch (error) {
+      console.error('Error creating workflow status:', error);
+      
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Validation failed',
+          details: validationError.message 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to create workflow status' 
+      });
+    }
+  });
+  
+  // PUT /api/admin/workflow-statuses/:id - Update workflow status
+  app.put('/api/admin/workflow-statuses/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user is admin
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user?.isAdmin) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Access denied. Admin privileges required.' 
+        });
+      }
+      
+      const updates = updateWorkflowStatusSchema.parse(req.body);
+      const status = await storage.updateWorkflowStatus(req.params.id, updates);
+      
+      if (!status) {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Workflow status not found' 
+        });
+      }
+      
+      // Log the update
+      const adminUserName = `${user.firstName} ${user.lastName}`.trim() || user.email || 'Admin';
+      console.log(`Admin ${adminUserName} updated workflow status: ${status.name} (${status.slug})`);
+      
+      res.json({ success: true, status });
+    } catch (error) {
+      console.error('Error updating workflow status:', error);
+      
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Validation failed',
+          details: validationError.message 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to update workflow status' 
+      });
+    }
+  });
+  
+  // DELETE /api/admin/workflow-statuses/:id - Delete workflow status
+  app.delete('/api/admin/workflow-statuses/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user is admin
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user?.isAdmin) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Access denied. Admin privileges required.' 
+        });
+      }
+      
+      const success = await storage.deleteWorkflowStatus(req.params.id);
+      
+      if (!success) {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Workflow status not found or could not be deleted' 
+        });
+      }
+      
+      // Log the deletion
+      const adminUserName = `${user.firstName} ${user.lastName}`.trim() || user.email || 'Admin';
+      console.log(`Admin ${adminUserName} deleted workflow status with ID: ${req.params.id}`);
+      
+      res.json({ success: true, message: 'Workflow status deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting workflow status:', error);
+      
+      // Handle specific errors from storage layer
+      if (error instanceof Error) {
+        return res.status(400).json({ 
+          success: false, 
+          error: error.message 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to delete workflow status' 
       });
     }
   });
