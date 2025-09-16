@@ -14,70 +14,6 @@ import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
 
 
-const mockBookings = [
-  {
-    id: '1',
-    eventType: 'luciatag' as const,
-    contactName: 'Anna Andersson',
-    contactEmail: 'anna@example.com',
-    contactPhone: '+46 70 123 45 67',
-    requestedDate: '2024-12-13',
-    startTime: '10:00',
-    duration: '2',
-    additionalNotes: 'Need space for 25 children and accompaniment',
-    status: 'pending' as const,
-    createdAt: '2024-12-01T10:00:00Z',
-    updatedAt: '2024-12-01T10:00:00Z',
-  },
-  {
-    id: '2',
-    eventType: 'sjungande_julgran' as const,
-    contactName: 'Erik Eriksson',
-    contactEmail: 'erik@skolan.se',
-    contactPhone: '+46 70 987 65 43',
-    requestedDate: '2024-12-15',
-    startTime: '14:00',
-    duration: '3',
-    additionalNotes: 'Annual school Christmas event',
-    status: 'reviewing' as const,
-    assignedTo: 'Maria',
-    createdAt: '2024-12-02T14:30:00Z',
-    updatedAt: '2024-12-02T16:15:00Z',
-  },
-  {
-    id: '3',
-    eventType: 'luciatag' as const,
-    contactName: 'Birgitta Svensson',
-    contactEmail: 'birgitta@kyrkan.se',
-    contactPhone: '+46 70 555 12 34',
-    requestedDate: '2024-12-20',
-    startTime: '18:00',
-    duration: '2',
-    status: 'approved' as const,
-    assignedTo: 'Johan',
-    createdAt: '2024-11-28T09:15:00Z',
-    updatedAt: '2024-12-03T11:20:00Z',
-  },
-];
-
-const mockActivityLog = [
-  {
-    id: '1',
-    action: 'Booking Created',
-    details: 'Initial booking request submitted',
-    userId: 'user1',
-    userName: 'Anna Andersson',
-    timestamp: '2024-12-01T10:00:00Z',
-  },
-  {
-    id: '2',
-    action: 'Status Changed', 
-    details: 'Moved from "New Request" to "Under Review"',
-    userId: 'admin1',
-    userName: 'Maria Svensson',
-    timestamp: '2024-12-02T14:30:00Z',
-  },
-];
 
 function Router() {
   const [currentView, setCurrentView] = useState<"public" | "admin">("public");
@@ -102,8 +38,8 @@ function Router() {
     select: (data) => data.bookings, // Unwrap the server response
   });
 
-  // Use mock data for public view, real data for admin view
-  const bookings = currentView === 'admin' && isAuthenticated && user?.isAdmin ? adminBookings : mockBookings;
+  // Public view only shows calendar blocked slots, no need for detailed bookings
+  const bookings = adminBookings;
   
   // Use useEffect to handle admin access redirect to prevent render loops
   useEffect(() => {
@@ -172,31 +108,16 @@ function Router() {
     },
   });
 
-  const handleBookingSubmit = (data: any) => {
-    console.log('New booking submitted:', data);
-    // In real app, this would save to backend
-    const newBooking = {
-      ...data,
-      id: Date.now().toString(),
-      status: 'pending' as const,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    // For public view, still use mock data
-    if (currentView === 'public') {
-      // This would be handled by the EventRegistrationForm component's own mutation
-    }
-    return Promise.resolve();
-  };
+  // EventRegistrationForm handles its own submission, no need for handleBookingSubmit
 
   const handleBookingClick = async (booking: any) => {
     if (currentView === 'admin' && isAuthenticated && user?.isAdmin) {
-      // Fetch real booking details with activity logs
+      // Fetch real booking details with activity logs for admin view
       fetchBookingDetailsMutation.mutate(booking.id);
     } else {
-      // Use mock data for public view
+      // For public view, show limited booking details without activity logs
       setSelectedBooking(booking);
-      setSelectedBookingActivities(mockActivityLog);
+      setSelectedBookingActivities([]); // Public view doesn't show activity logs
       setIsModalOpen(true);
     }
   };
@@ -205,10 +126,8 @@ function Router() {
     if (currentView === 'admin' && isAuthenticated && user?.isAdmin) {
       // Use real API call with activity logging
       updateStatusMutation.mutate({ bookingId, status: newStatus });
-    } else {
-      // Mock functionality for public view
-      console.log(`Mock: Moving booking ${bookingId} to ${newStatus}`);
     }
+    // Public view doesn't have booking move functionality
   };
 
   const handleStatusChange = (bookingId: string, newStatus: any) => {
@@ -220,7 +139,7 @@ function Router() {
       if (currentPage === "form") {
         return (
           <div className="container mx-auto p-6">
-            <EventRegistrationForm onSubmit={handleBookingSubmit} />
+            <EventRegistrationForm />
           </div>
         );
       } else if (currentPage === "calendar") {
@@ -265,7 +184,7 @@ function Router() {
               <p className="text-muted-foreground">Fullständig evenemangkalender med hanteringsmöjligheter</p>
             </div>
             <PublicCalendar 
-              blockedSlots={mockBlockedSlots} 
+              blockedSlots={calendarData || []} 
               className="cursor-pointer"
             />
             <div className="mt-4 p-4 bg-muted/50 rounded-lg">
@@ -294,7 +213,7 @@ function Router() {
         {renderCurrentPage()}
         <EventDetailModal
           booking={selectedBooking}
-          activityLog={currentView === 'admin' ? selectedBookingActivities : mockActivityLog}
+          activityLog={selectedBookingActivities}
           isOpen={isModalOpen}
           onOpenChange={setIsModalOpen}
           onStatusChange={handleStatusChange}
