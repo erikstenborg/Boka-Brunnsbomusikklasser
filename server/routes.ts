@@ -68,7 +68,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/event-types/:id - Get specific event type details
   app.get('/api/event-types/:id', async (req, res) => {
     try {
-      const eventType = await storage.getEventType(req.params.id);
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid event type ID' 
+        });
+      }
+      
+      const eventType = await storage.getEventType(id);
       
       if (!eventType) {
         return res.status(404).json({ 
@@ -168,9 +176,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const filters: any = {};
       
       if (statusIds) {
-        // Handle multiple status ID values
+        // Handle multiple status ID values and convert to numbers
         const statusIdArray = Array.isArray(statusIds) ? statusIds : [statusIds];
-        filters.statusIds = statusIdArray as string[];
+        filters.statusIds = statusIdArray.map((id: string) => Number(id)).filter(id => !isNaN(id));
       }
       
       if (statusSlugs) {
@@ -180,13 +188,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       if (eventTypeId) {
-        filters.eventTypeId = eventTypeId as string;
+        const eventTypeIdNum = Number(eventTypeId);
+        if (!isNaN(eventTypeIdNum)) {
+          filters.eventTypeId = eventTypeIdNum;
+        }
       }
       
       if (eventTypeIds) {
-        // Handle multiple event type ID values
+        // Handle multiple event type ID values and convert to numbers
         const eventTypeIdArray = Array.isArray(eventTypeIds) ? eventTypeIds : [eventTypeIds];
-        filters.eventTypeIds = eventTypeIdArray as string[];
+        filters.eventTypeIds = eventTypeIdArray.map((id: string) => Number(id)).filter(id => !isNaN(id));
       }
       
       if (assignedTo) {
@@ -224,7 +235,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const booking = await storage.getEventBooking(req.params.id);
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid booking ID' 
+        });
+      }
+      
+      const booking = await storage.getEventBooking(id);
       
       if (!booking) {
         return res.status(404).json({ 
@@ -256,8 +275,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid booking ID' 
+        });
+      }
+      
       const updates = updateEventBookingSchema.parse(req.body);
-      const existingBooking = await storage.getEventBooking(req.params.id);
+      const existingBooking = await storage.getEventBooking(id);
       
       if (!existingBooking) {
         return res.status(404).json({ 
@@ -270,7 +297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const adminUser = await storage.getUser(userId);
       const adminUserName = `${adminUser?.firstName} ${adminUser?.lastName}`.trim() || adminUser?.email || 'Admin';
       
-      const updatedBooking = await storage.updateEventBooking(req.params.id, updates, userId, adminUserName);
+      const updatedBooking = await storage.updateEventBooking(id, updates, userId, adminUserName);
       
       if (!updatedBooking) {
         return res.status(500).json({ 
@@ -409,7 +436,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const adminUser = await requireAdmin(req, res);
       if (!adminUser) return;
       
-      const booking = await storage.getEventBooking(req.params.id);
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid booking ID' 
+        });
+      }
+      
+      const booking = await storage.getEventBooking(id);
       
       if (!booking) {
         return res.status(404).json({ 
@@ -419,7 +454,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Also get activity logs for the booking
-      const activities = await storage.getActivityLogsForBooking(req.params.id);
+      const activities = await storage.getActivityLogsForBooking(id);
       
       res.json({ 
         success: true, 
@@ -441,8 +476,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const adminUser = await requireAdmin(req, res);
       if (!adminUser) return;
       
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid booking ID' 
+        });
+      }
+      
       const statusUpdate = updateBookingStatusSchema.parse(req.body);
-      const existingBooking = await storage.getEventBooking(req.params.id);
+      const existingBooking = await storage.getEventBooking(id);
       
       if (!existingBooking) {
         return res.status(404).json({ 
@@ -451,7 +494,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const updatedBooking = await storage.updateEventBooking(req.params.id, {
+      const updatedBooking = await storage.updateEventBooking(id, {
         statusId: statusUpdate.statusId
       }, adminUser.id, `${adminUser.firstName} ${adminUser.lastName}`.trim() || adminUser.email || 'Admin');
       
@@ -463,11 +506,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Log the status change activity
-      if (statusUpdate.status !== existingBooking.status) {
+      if (statusUpdate.statusId !== existingBooking.statusId) {
         await storage.createActivityLog({
-          bookingId: req.params.id,
+          bookingId: id,
           action: 'status_changed',
-          details: `Status changed from ${existingBooking.status} to ${statusUpdate.status}`,
+          details: `Status changed from ${existingBooking.status.name} to ${updatedBooking.status.name}`,
           userId: adminUser.id,
           userName: `${adminUser.firstName} ${adminUser.lastName}`.trim() || adminUser.email || 'Admin'
         });
@@ -499,8 +542,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const adminUser = await requireAdmin(req, res);
       if (!adminUser) return;
       
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid booking ID' 
+        });
+      }
+      
       const assignmentUpdate = assignBookingSchema.parse(req.body);
-      const existingBooking = await storage.getEventBooking(req.params.id);
+      const existingBooking = await storage.getEventBooking(id);
       
       if (!existingBooking) {
         return res.status(404).json({ 
@@ -525,7 +576,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const updatedBooking = await storage.updateEventBooking(req.params.id, {
+      const updatedBooking = await storage.updateEventBooking(id, {
         assignedTo: assignmentUpdate.assignedTo
       });
       
@@ -593,7 +644,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Include eventTypeId for buffer time calculations
-      const isAvailable = await storage.isTimeSlotAvailable(start, duration, eventTypeId as string || undefined);
+      const eventTypeIdNum = eventTypeId ? Number(eventTypeId) : undefined;
+      const isAvailable = await storage.isTimeSlotAvailable(start, duration, eventTypeIdNum);
       
       res.json({ 
         success: true, 

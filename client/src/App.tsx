@@ -12,6 +12,7 @@ import KanbanBoard from "@/components/KanbanBoard";
 import EventDetailModal from "@/components/EventDetailModal";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
+import { type EventBookingWithStatusAndType } from "@shared/schema";
 
 
 
@@ -28,18 +29,18 @@ function Router() {
   // Query to fetch calendar blocked slots (public data, no auth needed)
   const { data: calendarData, isLoading: isLoadingCalendar } = useQuery({
     queryKey: ['/api/calendar/blocked-slots'],
-    select: (data) => data.blockedSlots || [], // Unwrap the server response
+    select: (data: any) => data?.blockedSlots || [], // Unwrap the server response
   });
 
   // Query to fetch admin bookings (real API call)
   const { data: adminBookings = [], refetch: refetchBookings } = useQuery({
     queryKey: ['/api/bookings'],
-    enabled: currentView === 'admin' && isAuthenticated && user?.isAdmin,
-    select: (data) => data.bookings, // Unwrap the server response
+    enabled: currentView === 'admin' && isAuthenticated && !!user?.isAdmin,
+    select: (data: any) => data?.bookings || [], // Unwrap the server response
   });
 
   // Public view only shows calendar blocked slots, no need for detailed bookings
-  const bookings = adminBookings;
+  const bookings = adminBookings as EventBookingWithStatusAndType[];
   
   // Use useEffect to handle admin access redirect to prevent render loops
   useEffect(() => {
@@ -63,7 +64,7 @@ function Router() {
 
   // Mutation for updating booking status (with activity logging)
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ bookingId, status }: { bookingId: string; status: string }) => {
+    mutationFn: async ({ bookingId, status }: { bookingId: number; status: string }) => {
       const response = await apiRequest('PUT', `/api/bookings/${bookingId}`, { status });
       return await response.json();
     },
@@ -85,7 +86,7 @@ function Router() {
 
   // Mutation for fetching booking details
   const fetchBookingDetailsMutation = useMutation({
-    mutationFn: async (bookingId: string) => {
+    mutationFn: async (bookingId: number) => {
       const [bookingResponse, activitiesResponse] = await Promise.all([
         apiRequest('GET', `/api/bookings/${bookingId}`),
         apiRequest('GET', `/api/bookings/${bookingId}/activities`)
@@ -122,7 +123,7 @@ function Router() {
     }
   };
 
-  const handleMoveBooking = (bookingId: string, newStatus: any) => {
+  const handleMoveBooking = (bookingId: number, newStatus: string) => {
     if (currentView === 'admin' && isAuthenticated && user?.isAdmin) {
       // Use real API call with activity logging
       updateStatusMutation.mutate({ bookingId, status: newStatus });
@@ -130,7 +131,7 @@ function Router() {
     // Public view doesn't have booking move functionality
   };
 
-  const handleStatusChange = (bookingId: string, newStatus: any) => {
+  const handleStatusChange = (bookingId: number, newStatus: string) => {
     handleMoveBooking(bookingId, newStatus);
   };
 
@@ -155,7 +156,7 @@ function Router() {
         
         return (
           <div className="container mx-auto p-6">
-            <PublicCalendar blockedSlots={calendarData} />
+            <PublicCalendar blockedSlots={calendarData || []} />
           </div>
         );
       }
@@ -169,7 +170,7 @@ function Router() {
                 <p className="text-muted-foreground">Hantera julevenemangsbokningar genom arbetsflödet</p>
               </div>
               <KanbanBoard 
-                bookings={bookings}
+                bookings={bookings || []}
                 onBookingClick={handleBookingClick}
                 onMoveBooking={handleMoveBooking}
               />

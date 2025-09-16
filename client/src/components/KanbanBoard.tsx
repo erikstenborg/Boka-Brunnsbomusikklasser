@@ -6,44 +6,23 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Calendar, Clock, Mail, Phone, User, Music, Users, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { type EventBookingWithStatusAndType, type ActivityLog } from "@shared/schema";
 
-interface EventBooking {
-  id: string;
-  eventType: "luciatag" | "sjungande_julgran";
-  contactName: string;
-  contactEmail: string;
-  contactPhone: string;
-  requestedDate: string;
-  startTime: string;
-  duration: string;
-  additionalNotes?: string;
-  status: "pending" | "reviewing" | "approved" | "completed";
-  assignedTo?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface ActivityLog {
-  id: string;
-  bookingId: string;
-  action: string;
-  details: string;
-  userId: string;
-  userName: string;
-  timestamp: string;
-}
+// Use the shared schema types
+type EventBooking = EventBookingWithStatusAndType;
+type ActivityLogEntry = ActivityLog;
 
 interface KanbanColumn {
   id: string;
   title: string;
-  status: EventBooking['status'];
+  status: string;
   color: string;
 }
 
 interface KanbanBoardProps {
   bookings?: EventBooking[];
   onBookingClick?: (booking: EventBooking) => void;
-  onMoveBooking?: (bookingId: string, newStatus: EventBooking['status']) => void;
+  onMoveBooking?: (bookingId: number, newStatus: string) => void;
   className?: string;
 }
 
@@ -67,6 +46,11 @@ const eventTypeConfig = {
   },
 };
 
+// Helper function to get event type config
+const getEventTypeConfig = (eventType: EventBooking['eventType']) => {
+  return eventTypeConfig[eventType.slug as keyof typeof eventTypeConfig] || eventTypeConfig.luciatag;
+};
+
 export default function KanbanBoard({ 
   bookings = [], 
   onBookingClick, 
@@ -75,8 +59,8 @@ export default function KanbanBoard({
 }: KanbanBoardProps) {
   const [draggedBooking, setDraggedBooking] = useState<EventBooking | null>(null);
 
-  const getBookingsByStatus = (status: EventBooking['status']) => {
-    return bookings.filter(booking => booking.status === status);
+  const getBookingsByStatus = (status: string) => {
+    return bookings.filter(booking => booking.status.slug === status);
   };
 
   const handleDragStart = (e: React.DragEvent, booking: EventBooking) => {
@@ -89,10 +73,10 @@ export default function KanbanBoard({
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, newStatus: EventBooking['status']) => {
+  const handleDrop = (e: React.DragEvent, newStatus: string) => {
     e.preventDefault();
-    if (draggedBooking && draggedBooking.status !== newStatus) {
-      console.log(`Moving booking ${draggedBooking.id} from ${draggedBooking.status} to ${newStatus}`);
+    if (draggedBooking && draggedBooking.status.slug !== newStatus) {
+      console.log(`Moving booking ${draggedBooking.id} from ${draggedBooking.status.slug} to ${newStatus}`);
       if (onMoveBooking) {
         onMoveBooking(draggedBooking.id, newStatus);
       }
@@ -104,16 +88,24 @@ export default function KanbanBoard({
     setDraggedBooking(null);
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | Date) => {
     try {
       return format(new Date(dateString), 'MMM d, yyyy');
     } catch {
-      return dateString;
+      return dateString.toString();
+    }
+  };
+
+  const formatTime = (dateString: string | Date) => {
+    try {
+      return format(new Date(dateString), 'HH:mm');
+    } catch {
+      return 'Unknown';
     }
   };
 
   const renderBookingCard = (booking: EventBooking) => {
-    const eventConfig = eventTypeConfig[booking.eventType];
+    const eventConfig = getEventTypeConfig(booking.eventType);
     const EventIcon = eventConfig.icon;
 
     return (
@@ -129,7 +121,7 @@ export default function KanbanBoard({
         <CardContent className="p-4">
           <div className="space-y-3">
             <div className="flex items-start justify-between">
-              <Badge className={eventConfig.color} data-testid={`badge-event-type-${booking.eventType}`}>
+              <Badge className={eventConfig.color} data-testid={`badge-event-type-${booking.eventType.slug}`}>
                 <EventIcon className="w-3 h-3 mr-1" />
                 {eventConfig.name}
               </Badge>
@@ -158,14 +150,14 @@ export default function KanbanBoard({
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Calendar className="w-3 h-3" />
                 <span data-testid={`text-date-${booking.id}`}>
-                  {formatDate(booking.requestedDate)}
+                  {formatDate(booking.startAt)}
                 </span>
               </div>
               
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Clock className="w-3 h-3" />
                 <span data-testid={`text-time-${booking.id}`}>
-                  {booking.startTime} ({booking.duration}h)
+                  {formatTime(booking.startAt)} ({Math.round(booking.durationMinutes / 60)}h)
                 </span>
               </div>
               

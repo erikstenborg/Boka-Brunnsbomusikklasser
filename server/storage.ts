@@ -84,13 +84,18 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   // Event type operations
   async getEventTypes(filters?: { isActive?: boolean }): Promise<EventType[]> {
-    let query = db.select().from(eventTypes);
-    
     if (filters?.isActive !== undefined) {
-      query = query.where(eq(eventTypes.isActive, filters.isActive));
+      return await db
+        .select()
+        .from(eventTypes)
+        .where(eq(eventTypes.isActive, filters.isActive))
+        .orderBy(eventTypes.displayOrder, eventTypes.name);
     }
     
-    return await query.orderBy(eventTypes.displayOrder, eventTypes.name);
+    return await db
+      .select()
+      .from(eventTypes)
+      .orderBy(eventTypes.displayOrder, eventTypes.name);
   }
 
   async getEventType(id: number): Promise<EventType | undefined> {
@@ -145,7 +150,7 @@ export class DatabaseStorage implements IStorage {
       .delete(eventTypes)
       .where(eq(eventTypes.id, id));
 
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // User operations (required for Replit Auth)
@@ -171,13 +176,18 @@ export class DatabaseStorage implements IStorage {
 
   // Workflow status operations
   async getWorkflowStatuses(filters?: { isActive?: boolean }): Promise<WorkflowStatus[]> {
-    let query = db.select().from(workflowStatuses);
-    
     if (filters?.isActive !== undefined) {
-      query = query.where(eq(workflowStatuses.isActive, filters.isActive));
+      return await db
+        .select()
+        .from(workflowStatuses)
+        .where(eq(workflowStatuses.isActive, filters.isActive))
+        .orderBy(workflowStatuses.displayOrder, workflowStatuses.name);
     }
     
-    return await query.orderBy(workflowStatuses.displayOrder, workflowStatuses.name);
+    return await db
+      .select()
+      .from(workflowStatuses)
+      .orderBy(workflowStatuses.displayOrder, workflowStatuses.name);
   }
 
   async getWorkflowStatus(id: number): Promise<WorkflowStatus | undefined> {
@@ -267,24 +277,19 @@ export class DatabaseStorage implements IStorage {
       .delete(workflowStatuses)
       .where(eq(workflowStatuses.id, id));
 
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Event booking operations with status relationships
-  async createEventBooking(bookingData: InsertEventBooking): Promise<EventBookingWithStatus> {
-    // If no status is provided, use the default
-    let statusId = bookingData.statusId;
-    if (!statusId) {
-      const defaultStatus = await this.getDefaultWorkflowStatus();
-      statusId = defaultStatus.id;
-    }
+  async createEventBooking(bookingData: InsertEventBooking): Promise<EventBookingWithStatusAndType> {
+    // Always use the default status for new bookings (statusId is omitted from InsertEventBooking)
+    const defaultStatus = await this.getDefaultWorkflowStatus();
 
     const [booking] = await db
       .insert(eventBookings)
       .values({
         ...bookingData,
-        statusId,
-        id: randomUUID(),
+        statusId: defaultStatus.id,
       })
       .returning();
     
@@ -333,9 +338,6 @@ export class DatabaseStorage implements IStorage {
     console.log('DEBUG - Using duration:', durationMinutes, 'minutes');
     console.log('DEBUG - Created startAt:', startAt);
     
-    // Get default status for new bookings
-    const defaultStatus = await this.getDefaultWorkflowStatus();
-    
     const bookingData: InsertEventBooking = {
       eventTypeId: eventTypeId,
       contactName: formData.contactName,
@@ -343,7 +345,6 @@ export class DatabaseStorage implements IStorage {
       contactPhone: formData.contactPhone,
       startAt: startAt, // Pass Date object directly, not ISO string
       durationMinutes,
-      statusId: defaultStatus.id,
       additionalNotes: formData.additionalNotes || null,
     };
     
@@ -353,10 +354,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getEventBookings(filters?: {
-    statusIds?: string[];
+    statusIds?: number[];
     statusSlugs?: string[];
-    eventTypeId?: string;
-    eventTypeIds?: string[];
+    eventTypeId?: number;
+    eventTypeIds?: number[];
     assignedTo?: string;
     dateRange?: { start: Date; end: Date };
   }): Promise<EventBookingWithStatusAndType[]> {
@@ -423,7 +424,7 @@ export class DatabaseStorage implements IStorage {
     return await query.orderBy(desc(eventBookings.createdAt));
   }
 
-  async getEventBooking(id: string): Promise<EventBookingWithStatusAndType | undefined> {
+  async getEventBooking(id: number): Promise<EventBookingWithStatusAndType | undefined> {
     const [booking] = await db
       .select({
         id: eventBookings.id,
@@ -448,7 +449,7 @@ export class DatabaseStorage implements IStorage {
     return booking;
   }
 
-  async updateEventBooking(id: string, updates: UpdateEventBooking, userId?: string, userName?: string): Promise<EventBookingWithStatus | undefined> {
+  async updateEventBooking(id: number, updates: UpdateEventBooking, userId?: string, userName?: string): Promise<EventBookingWithStatusAndType | undefined> {
     // First get the current booking to track changes
     const existingBooking = await this.getEventBooking(id);
     if (!existingBooking) {
@@ -485,7 +486,7 @@ export class DatabaseStorage implements IStorage {
       changes.push(`Status ändrad från "${oldStatusName}" till "${newStatusName}"`);
       
       await this.createActivityLog({
-        bookingId: id,
+        bookingId: booking.id,
         action: 'status_changed',
         details: `Status ändrad från "${oldStatusName}" till "${newStatusName}"`,
         userId: userId || null,
@@ -500,7 +501,7 @@ export class DatabaseStorage implements IStorage {
       changes.push(`Ansvarig ändrad från "${oldAssignee}" till "${newAssignee}"`);
       
       await this.createActivityLog({
-        bookingId: id,
+        bookingId: booking.id,
         action: 'assigned',
         details: `Ansvarig ändrad från "${oldAssignee}" till "${newAssignee}"`,
         userId: userId || null,
@@ -510,7 +511,7 @@ export class DatabaseStorage implements IStorage {
     
     if (updates.additionalNotes !== undefined && updates.additionalNotes !== existingBooking.additionalNotes) {
       await this.createActivityLog({
-        bookingId: id,
+        bookingId: booking.id,
         action: 'notes_added',
         details: updates.additionalNotes ? 'Anteckningar uppdaterades' : 'Anteckningar togs bort',
         userId: userId || null,
@@ -525,23 +526,31 @@ export class DatabaseStorage implements IStorage {
   async createActivityLog(logData: InsertActivityLog): Promise<ActivityLog> {
     const [log] = await db
       .insert(activityLogs)
-      .values({
-        ...logData,
-        id: randomUUID(),
-      })
+      .values(logData)
       .returning();
     return log;
   }
 
   // Calendar-specific queries for availability checking  
-  async getBookingsInTimeRange(startTime: Date, endTime: Date): Promise<EventBookingWithStatus[]> {
+  async getBookingsInTimeRange(startTime: Date, endTime: Date): Promise<EventBookingWithStatusAndType[]> {
     // Get bookings excluding those with "pending" status as they may be rejected
     const pendingStatus = await this.getWorkflowStatusBySlug("pending");
     
-    let query = db
+    // Build conditions upfront
+    const conditions = [
+      gte(eventBookings.startAt, startTime),
+      lte(eventBookings.startAt, endTime)
+    ];
+    
+    // Exclude pending bookings if status exists
+    if (pendingStatus) {
+      conditions.push(not(eq(eventBookings.statusId, pendingStatus.id)));
+    }
+    
+    return await db
       .select({
         id: eventBookings.id,
-        eventType: eventBookings.eventType,
+        eventTypeId: eventBookings.eventTypeId,
         contactName: eventBookings.contactName,
         contactEmail: eventBookings.contactEmail,
         contactPhone: eventBookings.contactPhone,
@@ -553,31 +562,16 @@ export class DatabaseStorage implements IStorage {
         createdAt: eventBookings.createdAt,
         updatedAt: eventBookings.updatedAt,
         status: workflowStatuses,
+        eventType: eventTypes,
       })
       .from(eventBookings)
       .innerJoin(workflowStatuses, eq(eventBookings.statusId, workflowStatuses.id))
-      .where(
-        and(
-          gte(eventBookings.startAt, startTime),
-          lte(eventBookings.startAt, endTime)
-        )
-      );
-    
-    // Exclude pending bookings if status exists
-    if (pendingStatus) {
-      query = query.where(
-        and(
-          gte(eventBookings.startAt, startTime),
-          lte(eventBookings.startAt, endTime),
-          not(eq(eventBookings.statusId, pendingStatus.id))
-        )
-      );
-    }
-    
-    return await query.orderBy(eventBookings.startAt);
+      .innerJoin(eventTypes, eq(eventBookings.eventTypeId, eventTypes.id))
+      .where(and(...conditions))
+      .orderBy(eventBookings.startAt);
   }
   
-  async isTimeSlotAvailable(startTime: Date, durationMinutes: number, eventTypeId?: string): Promise<boolean> {
+  async isTimeSlotAvailable(startTime: Date, durationMinutes: number, eventTypeId?: number): Promise<boolean> {
     const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
     
     // Get buffer times if event type is provided
@@ -601,7 +595,19 @@ export class DatabaseStorage implements IStorage {
     
     // Check for any overlapping bookings (excluding pending status which might be rejected)
     // Include event type information to get buffer times for existing bookings
-    let query = db
+    const conditions = [
+      // Booking starts before our extended slot ends
+      lte(eventBookings.startAt, checkEndTime),
+      // Only check active workflow statuses
+      eq(workflowStatuses.isActive, true)
+    ];
+    
+    // Exclude pending status if it exists
+    if (pendingStatus) {
+      conditions.push(not(eq(eventBookings.statusId, pendingStatus.id)));
+    }
+    
+    const conflictingBookings = await db
       .select({ 
         id: eventBookings.id, 
         startAt: eventBookings.startAt, 
@@ -611,28 +617,8 @@ export class DatabaseStorage implements IStorage {
       .from(eventBookings)
       .innerJoin(workflowStatuses, eq(eventBookings.statusId, workflowStatuses.id))
       .innerJoin(eventTypes, eq(eventBookings.eventTypeId, eventTypes.id))
-      .where(
-        and(
-          // Booking starts before our extended slot ends
-          lte(eventBookings.startAt, checkEndTime),
-          // Only check active workflow statuses
-          eq(workflowStatuses.isActive, true)
-        )
-      )
+      .where(and(...conditions))
       .limit(10); // Get potential conflicts to check
-    
-    // Exclude pending status if it exists
-    if (pendingStatus) {
-      query = query.where(
-        and(
-          lte(eventBookings.startAt, checkEndTime),
-          eq(workflowStatuses.isActive, true),
-          not(eq(eventBookings.statusId, pendingStatus.id))
-        )
-      );
-    }
-    
-    const conflictingBookings = await query;
     
     // Check each potential conflict for actual overlap including buffer times
     for (const booking of conflictingBookings) {
@@ -656,7 +642,7 @@ export class DatabaseStorage implements IStorage {
     return true; // No conflicts found
   }
   
-  async getActivityLogsForBooking(bookingId: string): Promise<ActivityLog[]> {
+  async getActivityLogsForBooking(bookingId: number): Promise<ActivityLog[]> {
     return await db
       .select()
       .from(activityLogs)
@@ -666,7 +652,7 @@ export class DatabaseStorage implements IStorage {
 
   // Calendar-specific operations for public view with buffer times
   async getBlockedSlotsForCalendar(): Promise<{
-    id: string;
+    id: number;
     date: string;
     startTime: string;
     endTime: string;

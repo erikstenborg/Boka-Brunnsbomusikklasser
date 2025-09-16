@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { eventBookingFormSchema, type EventBookingForm, type EventType } from "@shared/schema";
+import { z } from "zod";
 
 interface EventRegistrationFormProps {
   onSubmit?: (data: EventBookingForm) => void;
@@ -33,9 +34,14 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
   });
   
   const form = useForm<EventBookingForm>({
-    resolver: zodResolver(eventBookingFormSchema),
+    resolver: zodResolver(eventBookingFormSchema.extend({
+      // Override eventTypeId to accept string from form and convert to number
+      eventTypeId: z.coerce.number().int().positive({
+        message: "Please select a valid event type",
+      }),
+    })),
     defaultValues: {
-      eventTypeId: "", // Changed to use eventTypeId instead of eventType
+      eventTypeId: "" as any, // Form handles as string, gets coerced to number
       contactName: "",
       contactEmail: "",
       contactPhone: "",
@@ -51,7 +57,9 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
   
   useEffect(() => {
     if (selectedEventTypeId && eventTypesData?.eventTypes) {
-      const selectedEventType = eventTypesData.eventTypes.find((et: EventType) => et.id === selectedEventTypeId);
+      // Convert string form value to number for comparison with integer IDs  
+      const eventTypeId = typeof selectedEventTypeId === 'string' ? parseInt(selectedEventTypeId) : selectedEventTypeId;
+      const selectedEventType = eventTypesData.eventTypes.find((et: EventType) => et.id === eventTypeId);
       if (selectedEventType) {
         // Convert minutes to hours for form display
         const durationHours = selectedEventType.defaultDurationMinutes / 60;
@@ -151,21 +159,23 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
                   <FormControl>
                     <RadioGroup
                       onValueChange={field.onChange}
-                      value={field.value}
+                      value={field.value?.toString() || ""}
                       className="grid grid-cols-1 md:grid-cols-2 gap-4"
                       data-testid="radio-event-type"
                     >
                       {eventTypes.map((type) => {
                         const Icon = type.icon;
+                        // Convert integer ID to string for form handling
+                        const typeIdString = type.id.toString();
                         return (
                           <div key={type.id} className="relative">
                             <RadioGroupItem
-                              value={type.id}
-                              id={type.id}
+                              value={typeIdString}
+                              id={`eventtype-${typeIdString}`}
                               className="peer sr-only"
                             />
                             <Label
-                              htmlFor={type.id}
+                              htmlFor={typeIdString}
                               className="flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover-elevate cursor-pointer transition-colors peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5"
                               data-testid={`label-event-${type.id}`}
                             >
