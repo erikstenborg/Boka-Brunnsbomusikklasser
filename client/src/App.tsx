@@ -13,37 +13,6 @@ import EventDetailModal from "@/components/EventDetailModal";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
 
-// todo: remove mock functionality
-const mockBlockedSlots = [
-  {
-    id: '1',
-    date: '2024-12-13',
-    startTime: '10:00',
-    endTime: '12:00',
-    eventType: 'luciatag' as const,
-  },
-  {
-    id: '2',
-    date: '2024-12-13',
-    startTime: '14:00',
-    endTime: '16:00',
-    eventType: 'sjungande_julgran' as const,
-  },
-  {
-    id: '3',
-    date: '2024-12-15',
-    startTime: '09:00',
-    endTime: '11:00', 
-    eventType: 'luciatag' as const,
-  },
-  {
-    id: '4',
-    date: '2024-12-20',
-    startTime: '16:00',
-    endTime: '18:00',
-    eventType: 'sjungande_julgran' as const,
-  },
-];
 
 const mockBookings = [
   {
@@ -119,6 +88,12 @@ function Router() {
   
   const { user, isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
+
+  // Query to fetch calendar blocked slots (public data, no auth needed)
+  const { data: calendarData, isLoading: isLoadingCalendar } = useQuery({
+    queryKey: ['/api/calendar/blocked-slots'],
+    select: (data) => data.blockedSlots || [], // Unwrap the server response
+  });
 
   // Query to fetch admin bookings (real API call)
   const { data: adminBookings = [], refetch: refetchBookings } = useQuery({
@@ -249,9 +224,19 @@ function Router() {
           </div>
         );
       } else if (currentPage === "calendar") {
+        if (isLoadingCalendar) {
+          return (
+            <div className="container mx-auto p-6">
+              <div className="flex items-center justify-center h-48">
+                <div className="text-muted-foreground">Laddar kalender...</div>
+              </div>
+            </div>
+          );
+        }
+        
         return (
           <div className="container mx-auto p-6">
-            <PublicCalendar blockedSlots={mockBlockedSlots} />
+            <PublicCalendar blockedSlots={calendarData} />
           </div>
         );
       }

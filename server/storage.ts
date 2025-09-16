@@ -42,6 +42,15 @@ export interface IStorage {
   // Activity log operations
   createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
   getActivityLogsForBooking(bookingId: string): Promise<ActivityLog[]>;
+  
+  // Calendar-specific operations for public view
+  getBlockedSlotsForCalendar(): Promise<{
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    eventType: EventType;
+  }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -307,6 +316,60 @@ export class DatabaseStorage implements IStorage {
       .from(activityLogs)
       .where(eq(activityLogs.bookingId, bookingId))
       .orderBy(desc(activityLogs.timestamp));
+  }
+
+  // Calendar-specific operations for public view
+  async getBlockedSlotsForCalendar(): Promise<{
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    eventType: EventType;
+  }[]> {
+    // Only get approved bookings for public calendar display
+    const approvedBookings = await db
+      .select()
+      .from(eventBookings)
+      .where(eq(eventBookings.status, "approved"))
+      .orderBy(eventBookings.startAt);
+
+    // Transform booking data to calendar format using consistent Europe/Stockholm timezone
+    return approvedBookings.map(booking => {
+      const startDate = new Date(booking.startAt);
+      const endDate = new Date(startDate.getTime() + booking.durationMinutes * 60000);
+      
+      // Use Europe/Stockholm timezone for consistent date/time formatting
+      const swedenTimeZone = 'Europe/Stockholm';
+      
+      // Format date consistently in Swedish timezone (YYYY-MM-DD)
+      const dateFormatter = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: swedenTimeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      const dateParts = dateFormatter.formatToParts(startDate);
+      const swedenDate = `${dateParts.find(p => p.type === 'year')?.value}-${dateParts.find(p => p.type === 'month')?.value}-${dateParts.find(p => p.type === 'day')?.value}`;
+      
+      // Format times consistently in Swedish timezone (HH:MM)
+      const timeFormatter = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: swedenTimeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      
+      const swedenStartTime = timeFormatter.format(startDate);
+      const swedenEndTime = timeFormatter.format(endDate);
+      
+      return {
+        id: booking.id,
+        date: swedenDate, // YYYY-MM-DD format in Swedish timezone
+        startTime: swedenStartTime, // HH:MM format in Swedish timezone
+        endTime: swedenEndTime, // HH:MM format in Swedish timezone
+        eventType: booking.eventType,
+      };
+    });
   }
 }
 

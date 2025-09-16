@@ -41,6 +41,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Public Calendar Routes (no authentication required)
+  
+  // GET /api/calendar/blocked-slots - Get blocked time slots for public calendar view
+  app.get('/api/calendar/blocked-slots', async (req, res) => {
+    try {
+      const blockedSlots = await storage.getBlockedSlotsForCalendar();
+      res.json({ success: true, blockedSlots });
+    } catch (error) {
+      console.error('Error fetching blocked slots:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to fetch blocked slots' 
+      });
+    }
+  });
+  
   // Event Booking Routes
   
   // POST /api/bookings - Create a new event booking from form data
