@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "./lib/queryClient";
+import { QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/Navigation";
 import EventRegistrationForm from "@/components/EventRegistrationForm";
 import PublicCalendar from "@/components/PublicCalendar";
@@ -114,9 +115,20 @@ function Router() {
   const [currentPage, setCurrentPage] = useState<"form" | "calendar" | "kanban">("form");
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [bookings, setBookings] = useState(mockBookings);
+  const [selectedBookingActivities, setSelectedBookingActivities] = useState<any[]>([]);
   
   const { user, isAuthenticated, isLoading } = useAuth();
+  const { toast } = useToast();
+
+  // Query to fetch admin bookings (real API call)
+  const { data: adminBookings = [], refetch: refetchBookings } = useQuery({
+    queryKey: ['/api/bookings'],
+    enabled: currentView === 'admin' && isAuthenticated && user?.isAdmin,
+    select: (data) => data.bookings, // Unwrap the server response
+  });
+
+  // Use mock data for public view, real data for admin view
+  const bookings = currentView === 'admin' && isAuthenticated && user?.isAdmin ? adminBookings : mockBookings;
   
   // Use useEffect to handle admin access redirect to prevent render loops
   useEffect(() => {
@@ -138,6 +150,53 @@ function Router() {
     }
   };
 
+  // Mutation for updating booking status (with activity logging)
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ bookingId, status }: { bookingId: string; status: string }) => {
+      const response = await apiRequest('PUT', `/api/bookings/${bookingId}`, { status });
+      return await response.json();
+    },
+    onSuccess: () => {
+      refetchBookings();
+      toast({
+        title: "Status updated",
+        description: "Booking status has been updated successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update booking status.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mutation for fetching booking details
+  const fetchBookingDetailsMutation = useMutation({
+    mutationFn: async (bookingId: string) => {
+      const [bookingResponse, activitiesResponse] = await Promise.all([
+        apiRequest('GET', `/api/bookings/${bookingId}`),
+        apiRequest('GET', `/api/bookings/${bookingId}/activities`)
+      ]);
+      const booking = await bookingResponse.json();
+      const activities = await activitiesResponse.json();
+      return { booking: booking.booking, activities: activities.activities };
+    },
+    onSuccess: (data) => {
+      setSelectedBooking(data.booking);
+      setSelectedBookingActivities(data.activities || []);
+      setIsModalOpen(true);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to fetch booking details.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleBookingSubmit = (data: any) => {
     console.log('New booking submitted:', data);
     // In real app, this would save to backend
@@ -148,29 +207,37 @@ function Router() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setBookings(prev => [...prev, newBooking]);
+    // For public view, still use mock data
+    if (currentView === 'public') {
+      // This would be handled by the EventRegistrationForm component's own mutation
+    }
     return Promise.resolve();
   };
 
-  const handleBookingClick = (booking: any) => {
-    setSelectedBooking(booking);
-    setIsModalOpen(true);
+  const handleBookingClick = async (booking: any) => {
+    if (currentView === 'admin' && isAuthenticated && user?.isAdmin) {
+      // Fetch real booking details with activity logs
+      fetchBookingDetailsMutation.mutate(booking.id);
+    } else {
+      // Use mock data for public view
+      setSelectedBooking(booking);
+      setSelectedBookingActivities(mockActivityLog);
+      setIsModalOpen(true);
+    }
   };
 
   const handleMoveBooking = (bookingId: string, newStatus: any) => {
-    setBookings(prev => 
-      prev.map(booking => 
-        booking.id === bookingId 
-          ? { ...booking, status: newStatus, updatedAt: new Date().toISOString() }
-          : booking
-      )
-    );
+    if (currentView === 'admin' && isAuthenticated && user?.isAdmin) {
+      // Use real API call with activity logging
+      updateStatusMutation.mutate({ bookingId, status: newStatus });
+    } else {
+      // Mock functionality for public view
+      console.log(`Mock: Moving booking ${bookingId} to ${newStatus}`);
+    }
   };
 
   const handleStatusChange = (bookingId: string, newStatus: any) => {
     handleMoveBooking(bookingId, newStatus);
-    // In real app, would also log activity
-    console.log(`Status changed for booking ${bookingId} to ${newStatus}`);
   };
 
   const renderCurrentPage = () => {
@@ -242,7 +309,7 @@ function Router() {
         {renderCurrentPage()}
         <EventDetailModal
           booking={selectedBooking}
-          activityLog={mockActivityLog}
+          activityLog={currentView === 'admin' ? selectedBookingActivities : mockActivityLog}
           isOpen={isModalOpen}
           onOpenChange={setIsModalOpen}
           onStatusChange={handleStatusChange}

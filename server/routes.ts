@@ -51,11 +51,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('DEBUG - Parsed form data:', formData);
       const booking = await storage.createEventBookingFromForm(formData);
       
-      // Log the creation activity
+      // Log the creation activity in Swedish
+      const eventTypeNames = {
+        'luciatag': 'Luciatåg',
+        'sjungande_julgran': 'Sjungande Julgran'
+      };
+      
       await storage.createActivityLog({
         bookingId: booking.id,
         action: 'created',
-        details: `Booking created for ${booking.eventType} on ${new Date(booking.startAt).toLocaleDateString()}`,
+        details: `Bokning skapad för ${eventTypeNames[booking.eventType]} den ${new Date(booking.startAt).toLocaleDateString('sv-SE')}`,
         userId: null,
         userName: 'System'
       });
@@ -190,7 +195,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const updatedBooking = await storage.updateEventBooking(req.params.id, updates);
+      // Get admin user info for activity logging
+      const adminUser = await storage.getUser(userId);
+      const adminUserName = `${adminUser?.firstName} ${adminUser?.lastName}`.trim() || adminUser?.email || 'Admin';
+      
+      const updatedBooking = await storage.updateEventBooking(req.params.id, updates, userId, adminUserName);
       
       if (!updatedBooking) {
         return res.status(500).json({ 
@@ -199,27 +208,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Log the update activity
-      const changes = [];
-      if (updates.status && updates.status !== existingBooking.status) {
-        changes.push(`Status changed from ${existingBooking.status} to ${updates.status}`);
-      }
-      if (updates.assignedTo && updates.assignedTo !== existingBooking.assignedTo) {
-        changes.push(`Assigned to ${updates.assignedTo}`);
-      }
-      if (updates.additionalNotes && updates.additionalNotes !== existingBooking.additionalNotes) {
-        changes.push('Notes updated');
-      }
-      
-      if (changes.length > 0) {
-        await storage.createActivityLog({
-          bookingId: req.params.id,
-          action: 'updated',
-          details: changes.join(', '),
-          userId: req.body.userId || null,
-          userName: req.body.userName || 'System'
-        });
-      }
+      // Activity logging is now handled automatically in the storage method
       
       res.json({ success: true, booking: updatedBooking });
     } catch (error) {

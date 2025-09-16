@@ -159,7 +159,14 @@ export class DatabaseStorage implements IStorage {
     return booking;
   }
 
-  async updateEventBooking(id: string, updates: UpdateEventBooking): Promise<EventBooking | undefined> {
+  async updateEventBooking(id: string, updates: UpdateEventBooking, userId?: string, userName?: string): Promise<EventBooking | undefined> {
+    // First get the current booking to track changes
+    const existingBooking = await this.getEventBooking(id);
+    if (!existingBooking) {
+      return undefined;
+    }
+
+    // Update the booking
     const [booking] = await db
       .update(eventBookings)
       .set({
@@ -168,6 +175,58 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(eventBookings.id, id))
       .returning();
+
+    if (!booking) {
+      return undefined;
+    }
+
+    // Track changes and create activity logs with Swedish descriptions
+    const changes = [];
+    
+    if (updates.status && updates.status !== existingBooking.status) {
+      const statusTranslations = {
+        'pending': 'Väntar på granskning',
+        'reviewing': 'Under granskning', 
+        'approved': 'Godkänd',
+        'completed': 'Slutförd'
+      };
+      
+      changes.push(`Status ändrad från "${statusTranslations[existingBooking.status]}" till "${statusTranslations[updates.status]}"`);
+      
+      await this.createActivityLog({
+        bookingId: id,
+        action: 'status_changed',
+        details: `Status ändrad från "${statusTranslations[existingBooking.status]}" till "${statusTranslations[updates.status]}"`,
+        userId: userId || null,
+        userName: userName || 'System'
+      });
+    }
+    
+    if (updates.assignedTo !== undefined && updates.assignedTo !== existingBooking.assignedTo) {
+      const oldAssignee = existingBooking.assignedTo || 'Ingen';
+      const newAssignee = updates.assignedTo || 'Ingen';
+      
+      changes.push(`Ansvarig ändrad från "${oldAssignee}" till "${newAssignee}"`);
+      
+      await this.createActivityLog({
+        bookingId: id,
+        action: 'assigned',
+        details: `Ansvarig ändrad från "${oldAssignee}" till "${newAssignee}"`,
+        userId: userId || null,
+        userName: userName || 'System'
+      });
+    }
+    
+    if (updates.additionalNotes !== undefined && updates.additionalNotes !== existingBooking.additionalNotes) {
+      await this.createActivityLog({
+        bookingId: id,
+        action: 'notes_added',
+        details: updates.additionalNotes ? 'Anteckningar uppdaterades' : 'Anteckningar togs bort',
+        userId: userId || null,
+        userName: userName || 'System'
+      });
+    }
+    
     return booking;
   }
 
