@@ -146,10 +146,27 @@ export const insertEventBookingSchema = createInsertSchema(eventBookings)
     durationMinutes: z.number().min(30, "Minimum duration is 30 minutes").max(480, "Maximum duration is 8 hours"),
   });
 
-export const updateEventBookingSchema = createInsertSchema(eventBookings).pick({
-  status: true,
-  assignedTo: true,
-  additionalNotes: true,
+export const updateEventBookingSchema = createInsertSchema(eventBookings)
+  .pick({
+    status: true,
+    assignedTo: true,
+    additionalNotes: true,
+  })
+  .extend({
+    // Explicitly validate enum values for better type safety
+    status: z.enum(["pending", "reviewing", "approved", "completed"]).optional(),
+    assignedTo: z.string().optional(),
+  });
+
+// Admin-specific schemas for kanban workflow operations
+export const updateBookingStatusSchema = z.object({
+  status: z.enum(["pending", "reviewing", "approved", "completed"], {
+    required_error: "Status is required",
+  }),
+});
+
+export const assignBookingSchema = z.object({
+  assignedTo: z.string().min(1, "Assigned user ID is required"),
 });
 
 // Form schema for frontend with date/time splitting
@@ -168,6 +185,8 @@ export const eventBookingFormSchema = z.object({
 
 export type InsertEventBooking = z.infer<typeof insertEventBookingSchema>;
 export type UpdateEventBooking = z.infer<typeof updateEventBookingSchema>;
+export type UpdateBookingStatus = z.infer<typeof updateBookingStatusSchema>;
+export type AssignBooking = z.infer<typeof assignBookingSchema>;
 export type EventBookingForm = z.infer<typeof eventBookingFormSchema>;
 export type EventBooking = typeof eventBookings.$inferSelect;
 
