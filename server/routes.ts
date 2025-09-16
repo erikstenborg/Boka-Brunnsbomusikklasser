@@ -11,11 +11,15 @@ import {
   insertActivityLogSchema,
   insertWorkflowStatusSchema,
   updateWorkflowStatusSchema,
+  insertEventTypeSchema,
+  updateEventTypeSchema,
   type EventBookingForm,
   type UpdateEventBooking,
   type UpdateBookingStatus,
   type AssignBooking,
   type EventType,
+  type InsertEventType,
+  type UpdateEventType,
   type WorkflowStatus,
   type InsertWorkflowStatus,
   type UpdateWorkflowStatus,
@@ -45,6 +49,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Public Event Types Routes (no authentication required)
+  
+  // GET /api/event-types - Get all active event types for booking form
+  app.get('/api/event-types', async (req, res) => {
+    try {
+      const eventTypes = await storage.getEventTypes({ isActive: true });
+      res.json({ success: true, eventTypes });
+    } catch (error) {
+      console.error('Error fetching event types:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to fetch event types' 
+      });
+    }
+  });
+  
+  // GET /api/event-types/:id - Get specific event type details
+  app.get('/api/event-types/:id', async (req, res) => {
+    try {
+      const eventType = await storage.getEventType(req.params.id);
+      
+      if (!eventType) {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Event type not found' 
+        });
+      }
+      
+      res.json({ success: true, eventType });
+    } catch (error) {
+      console.error('Error fetching event type:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to fetch event type' 
+      });
+    }
+  });
+
   // Public Calendar Routes (no authentication required)
   
   // GET /api/calendar/blocked-slots - Get blocked time slots for public calendar view
@@ -71,16 +113,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('DEBUG - Parsed form data:', formData);
       const booking = await storage.createEventBookingFromForm(formData);
       
-      // Log the creation activity in Swedish
-      const eventTypeNames = {
-        'luciatag': 'Luciatåg',
-        'sjungande_julgran': 'Sjungande Julgran'
-      };
-      
+      // Log the creation activity in Swedish using the actual event type name
       await storage.createActivityLog({
         bookingId: booking.id,
         action: 'created',
-        details: `Bokning skapad för ${eventTypeNames[booking.eventType]} den ${new Date(booking.startAt).toLocaleDateString('sv-SE')}`,
+        details: `Bokning skapad för ${booking.eventType.name} den ${new Date(booking.startAt).toLocaleDateString('sv-SE')}`,
         userId: null,
         userName: 'System'
       });
@@ -121,7 +158,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const {
         statusIds,
         statusSlugs,
-        eventType,
+        eventTypeId,
+        eventTypeIds,
         assignedTo,
         startDate,
         endDate,
@@ -141,8 +179,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         filters.statusSlugs = statusSlugArray as string[];
       }
       
-      if (eventType) {
-        filters.eventType = eventType as EventType;
+      if (eventTypeId) {
+        filters.eventTypeId = eventTypeId as string;
+      }
+      
+      if (eventTypeIds) {
+        // Handle multiple event type ID values
+        const eventTypeIdArray = Array.isArray(eventTypeIds) ? eventTypeIds : [eventTypeIds];
+        filters.eventTypeIds = eventTypeIdArray as string[];
       }
       
       if (assignedTo) {
@@ -306,7 +350,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const {
         statusIds,
         statusSlugs,
-        eventType,
+        eventTypeId,
+        eventTypeIds,
         assignedTo,
         startDate,
         endDate,
@@ -326,8 +371,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         filters.statusSlugs = statusSlugArray as string[];
       }
       
-      if (eventType) {
-        filters.eventType = eventType as EventType;
+      if (eventTypeId) {
+        filters.eventTypeId = eventTypeId as string;
+      }
+      
+      if (eventTypeIds) {
+        // Handle multiple event type ID values for kanban columns
+        const eventTypeIdArray = Array.isArray(eventTypeIds) ? eventTypeIds : [eventTypeIds];
+        filters.eventTypeIds = eventTypeIdArray as string[];
       }
       
       if (assignedTo) {
@@ -522,7 +573,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/calendar/availability - Check if a time slot is available
   app.get('/api/calendar/availability', async (req, res) => {
     try {
-      const { startTime, durationMinutes } = req.query;
+      const { startTime, durationMinutes, eventTypeId } = req.query;
       
       if (!startTime || !durationMinutes) {
         return res.status(400).json({
@@ -541,13 +592,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const isAvailable = await storage.isTimeSlotAvailable(start, duration);
+      // Include eventTypeId for buffer time calculations
+      const isAvailable = await storage.isTimeSlotAvailable(start, duration, eventTypeId as string || undefined);
       
       res.json({ 
         success: true, 
         available: isAvailable,
         startTime: start.toISOString(),
-        durationMinutes: duration
+        durationMinutes: duration,
+        eventTypeId: eventTypeId || null
       });
     } catch (error) {
       console.error('Error checking availability:', error);

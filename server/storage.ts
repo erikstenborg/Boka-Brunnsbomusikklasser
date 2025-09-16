@@ -1,18 +1,22 @@
 import {
   users,
   eventBookings,
+  eventTypes,
   activityLogs,
   workflowStatuses,
   type User,
   type UpsertUser,
   type EventBooking,
   type EventBookingWithStatus,
+  type EventBookingWithStatusAndType,
   type InsertEventBooking,
   type UpdateEventBooking,
   type ActivityLog,
   type InsertActivityLog,
   type EventBookingForm,
   type EventType,
+  type InsertEventType,
+  type UpdateEventType,
   type WorkflowStatus,
   type InsertWorkflowStatus,
   type UpdateWorkflowStatus,
@@ -21,11 +25,19 @@ import { db } from "./db";
 import { eq, desc, and, gte, lte, or, not, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
-// Interface for storage operations with enhanced calendar queries
+// Interface for storage operations with enhanced calendar queries and buffer times
 export interface IStorage {
   // User operations (required for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  
+  // Event type operations
+  getEventTypes(filters?: { isActive?: boolean }): Promise<EventType[]>;
+  getEventType(id: string): Promise<EventType | undefined>;
+  getEventTypeBySlug(slug: string): Promise<EventType | undefined>;
+  createEventType(eventType: InsertEventType): Promise<EventType>;
+  updateEventType(id: string, updates: UpdateEventType): Promise<EventType | undefined>;
+  deleteEventType(id: string): Promise<boolean>;
   
   // Workflow status operations
   getWorkflowStatuses(filters?: { isActive?: boolean }): Promise<WorkflowStatus[]>;
@@ -36,28 +48,29 @@ export interface IStorage {
   updateWorkflowStatus(id: string, updates: UpdateWorkflowStatus): Promise<WorkflowStatus | undefined>;
   deleteWorkflowStatus(id: string): Promise<boolean>;
   
-  // Event booking operations with status relationships
-  createEventBooking(booking: InsertEventBooking): Promise<EventBookingWithStatus>;
-  createEventBookingFromForm(form: EventBookingForm): Promise<EventBookingWithStatus>;
+  // Event booking operations with status and type relationships
+  createEventBooking(booking: InsertEventBooking): Promise<EventBookingWithStatusAndType>;
+  createEventBookingFromForm(form: EventBookingForm): Promise<EventBookingWithStatusAndType>;
   getEventBookings(filters?: {
     statusIds?: string[];
     statusSlugs?: string[];
-    eventType?: EventType;
+    eventTypeId?: string;
+    eventTypeIds?: string[];
     assignedTo?: string;
     dateRange?: { start: Date; end: Date };
-  }): Promise<EventBookingWithStatus[]>;
-  getEventBooking(id: string): Promise<EventBookingWithStatus | undefined>;
-  updateEventBooking(id: string, updates: UpdateEventBooking, userId?: string, userName?: string): Promise<EventBookingWithStatus | undefined>;
+  }): Promise<EventBookingWithStatusAndType[]>;
+  getEventBooking(id: string): Promise<EventBookingWithStatusAndType | undefined>;
+  updateEventBooking(id: string, updates: UpdateEventBooking, userId?: string, userName?: string): Promise<EventBookingWithStatusAndType | undefined>;
   
-  // Calendar-specific queries for availability checking
-  getBookingsInTimeRange(startTime: Date, endTime: Date): Promise<EventBookingWithStatus[]>;
-  isTimeSlotAvailable(startTime: Date, durationMinutes: number): Promise<boolean>;
+  // Calendar-specific queries for availability checking with buffer times
+  getBookingsInTimeRange(startTime: Date, endTime: Date): Promise<EventBookingWithStatusAndType[]>;
+  isTimeSlotAvailable(startTime: Date, durationMinutes: number, eventTypeId?: string): Promise<boolean>;
   
   // Activity log operations
   createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
   getActivityLogsForBooking(bookingId: string): Promise<ActivityLog[]>;
   
-  // Calendar-specific operations for public view
+  // Calendar-specific operations for public view with buffer times
   getBlockedSlotsForCalendar(): Promise<{
     id: string;
     date: string;
@@ -69,6 +82,75 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Event type operations
+  async getEventTypes(filters?: { isActive?: boolean }): Promise<EventType[]> {
+    let query = db.select().from(eventTypes);
+    
+    if (filters?.isActive !== undefined) {
+      query = query.where(eq(eventTypes.isActive, filters.isActive));
+    }
+    
+    return await query.orderBy(eventTypes.displayOrder, eventTypes.name);
+  }
+
+  async getEventType(id: string): Promise<EventType | undefined> {
+    const [eventType] = await db
+      .select()
+      .from(eventTypes)
+      .where(eq(eventTypes.id, id));
+    return eventType;
+  }
+
+  async getEventTypeBySlug(slug: string): Promise<EventType | undefined> {
+    const [eventType] = await db
+      .select()
+      .from(eventTypes)
+      .where(eq(eventTypes.slug, slug));
+    return eventType;
+  }
+
+  async createEventType(eventTypeData: InsertEventType): Promise<EventType> {
+    const [eventType] = await db
+      .insert(eventTypes)
+      .values({
+        ...eventTypeData,
+        id: randomUUID(),
+      })
+      .returning();
+    return eventType;
+  }
+
+  async updateEventType(id: string, updates: UpdateEventType): Promise<EventType | undefined> {
+    const [eventType] = await db
+      .update(eventTypes)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(eventTypes.id, id))
+      .returning();
+    return eventType;
+  }
+
+  async deleteEventType(id: string): Promise<boolean> {
+    // Check if this event type is in use by any bookings
+    const [bookingUsingEventType] = await db
+      .select({ count: eventBookings.id })
+      .from(eventBookings)
+      .where(eq(eventBookings.eventTypeId, id))
+      .limit(1);
+
+    if (bookingUsingEventType) {
+      throw new Error("Cannot delete event type that is currently in use by bookings.");
+    }
+
+    const result = await db
+      .delete(eventTypes)
+      .where(eq(eventTypes.id, id));
+
+    return result.rowCount > 0;
+  }
+
   // User operations (required for Replit Auth)
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -221,23 +303,47 @@ export class DatabaseStorage implements IStorage {
     return bookingWithStatus;
   }
 
-  async createEventBookingFromForm(formData: EventBookingForm): Promise<EventBookingWithStatus> {
+  async createEventBookingFromForm(formData: EventBookingForm): Promise<EventBookingWithStatusAndType> {
     // Convert form data to proper temporal format
     const startAt = new Date(`${formData.requestedDate}T${formData.startTime}`);
-    const durationMinutes = Math.round(formData.durationHours * 60);
+    
+    // Use eventTypeId from form, or fallback to backwards compatibility with eventType
+    let eventTypeId = formData.eventTypeId;
+    if (!eventTypeId && formData.eventType) {
+      // Backwards compatibility: convert eventType string to eventTypeId
+      const eventType = await this.getEventTypeBySlug(formData.eventType);
+      if (!eventType) {
+        throw new Error(`Event type with slug '${formData.eventType}' not found`);
+      }
+      eventTypeId = eventType.id;
+    }
+    
+    if (!eventTypeId) {
+      throw new Error("Event type is required");
+    }
+    
+    // Get event type to check defaults
+    const eventType = await this.getEventType(eventTypeId);
+    if (!eventType) {
+      throw new Error("Invalid event type ID");
+    }
+    
+    // Use provided duration or event type default
+    const durationMinutes = formData.durationHours ? 
+      Math.round(formData.durationHours * 60) : 
+      eventType.defaultDurationMinutes;
     
     // Debug logging
     console.log('DEBUG - Form data:', formData);
+    console.log('DEBUG - Event type:', eventType);
+    console.log('DEBUG - Using duration:', durationMinutes, 'minutes');
     console.log('DEBUG - Created startAt:', startAt);
-    console.log('DEBUG - startAt type:', typeof startAt);
-    console.log('DEBUG - startAt instanceof Date:', startAt instanceof Date);
-    console.log('DEBUG - startAt.toISOString():', startAt.toISOString());
     
     // Get default status for new bookings
     const defaultStatus = await this.getDefaultWorkflowStatus();
     
     const bookingData: InsertEventBooking = {
-      eventType: formData.eventType,
+      eventTypeId: eventTypeId,
       contactName: formData.contactName,
       contactEmail: formData.contactEmail,
       contactPhone: formData.contactPhone,
@@ -255,14 +361,15 @@ export class DatabaseStorage implements IStorage {
   async getEventBookings(filters?: {
     statusIds?: string[];
     statusSlugs?: string[];
-    eventType?: EventType;
+    eventTypeId?: string;
+    eventTypeIds?: string[];
     assignedTo?: string;
     dateRange?: { start: Date; end: Date };
-  }): Promise<EventBookingWithStatus[]> {
+  }): Promise<EventBookingWithStatusAndType[]> {
     let query = db
       .select({
         id: eventBookings.id,
-        eventType: eventBookings.eventType,
+        eventTypeId: eventBookings.eventTypeId,
         contactName: eventBookings.contactName,
         contactEmail: eventBookings.contactEmail,
         contactPhone: eventBookings.contactPhone,
@@ -274,9 +381,11 @@ export class DatabaseStorage implements IStorage {
         createdAt: eventBookings.createdAt,
         updatedAt: eventBookings.updatedAt,
         status: workflowStatuses,
+        eventType: eventTypes,
       })
       .from(eventBookings)
-      .innerJoin(workflowStatuses, eq(eventBookings.statusId, workflowStatuses.id));
+      .innerJoin(workflowStatuses, eq(eventBookings.statusId, workflowStatuses.id))
+      .innerJoin(eventTypes, eq(eventBookings.eventTypeId, eventTypes.id));
     
     if (filters) {
       const conditions = [];
@@ -291,8 +400,12 @@ export class DatabaseStorage implements IStorage {
         conditions.push(inArray(workflowStatuses.slug, filters.statusSlugs));
       }
       
-      if (filters.eventType) {
-        conditions.push(eq(eventBookings.eventType, filters.eventType));
+      if (filters.eventTypeId) {
+        conditions.push(eq(eventBookings.eventTypeId, filters.eventTypeId));
+      }
+      
+      if (filters.eventTypeIds && filters.eventTypeIds.length > 0) {
+        conditions.push(inArray(eventBookings.eventTypeId, filters.eventTypeIds));
       }
       
       if (filters.assignedTo) {
@@ -316,11 +429,11 @@ export class DatabaseStorage implements IStorage {
     return await query.orderBy(desc(eventBookings.createdAt));
   }
 
-  async getEventBooking(id: string): Promise<EventBookingWithStatus | undefined> {
+  async getEventBooking(id: string): Promise<EventBookingWithStatusAndType | undefined> {
     const [booking] = await db
       .select({
         id: eventBookings.id,
-        eventType: eventBookings.eventType,
+        eventTypeId: eventBookings.eventTypeId,
         contactName: eventBookings.contactName,
         contactEmail: eventBookings.contactEmail,
         contactPhone: eventBookings.contactPhone,
@@ -332,9 +445,11 @@ export class DatabaseStorage implements IStorage {
         createdAt: eventBookings.createdAt,
         updatedAt: eventBookings.updatedAt,
         status: workflowStatuses,
+        eventType: eventTypes,
       })
       .from(eventBookings)
       .innerJoin(workflowStatuses, eq(eventBookings.statusId, workflowStatuses.id))
+      .innerJoin(eventTypes, eq(eventBookings.eventTypeId, eventTypes.id))
       .where(eq(eventBookings.id, id));
     return booking;
   }
@@ -468,21 +583,44 @@ export class DatabaseStorage implements IStorage {
     return await query.orderBy(eventBookings.startAt);
   }
   
-  async isTimeSlotAvailable(startTime: Date, durationMinutes: number): Promise<boolean> {
+  async isTimeSlotAvailable(startTime: Date, durationMinutes: number, eventTypeId?: string): Promise<boolean> {
     const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
+    
+    // Get buffer times if event type is provided
+    let bufferBefore = 0;
+    let bufferAfter = 0;
+    
+    if (eventTypeId) {
+      const eventType = await this.getEventType(eventTypeId);
+      if (eventType) {
+        bufferBefore = eventType.bufferBeforeMinutes;
+        bufferAfter = eventType.bufferAfterMinutes;
+      }
+    }
+    
+    // Extend the check range to include buffer times
+    const checkStartTime = new Date(startTime.getTime() - bufferBefore * 60000);
+    const checkEndTime = new Date(endTime.getTime() + bufferAfter * 60000);
     
     // Get pending status to exclude it from availability check
     const pendingStatus = await this.getWorkflowStatusBySlug("pending");
     
     // Check for any overlapping bookings (excluding pending status which might be rejected)
+    // Include event type information to get buffer times for existing bookings
     let query = db
-      .select({ id: eventBookings.id, startAt: eventBookings.startAt, durationMinutes: eventBookings.durationMinutes })
+      .select({ 
+        id: eventBookings.id, 
+        startAt: eventBookings.startAt, 
+        durationMinutes: eventBookings.durationMinutes,
+        eventType: eventTypes
+      })
       .from(eventBookings)
       .innerJoin(workflowStatuses, eq(eventBookings.statusId, workflowStatuses.id))
+      .innerJoin(eventTypes, eq(eventBookings.eventTypeId, eventTypes.id))
       .where(
         and(
-          // Booking starts before our slot ends
-          lte(eventBookings.startAt, endTime),
+          // Booking starts before our extended slot ends
+          lte(eventBookings.startAt, checkEndTime),
           // Only check active workflow statuses
           eq(workflowStatuses.isActive, true)
         )
@@ -493,7 +631,7 @@ export class DatabaseStorage implements IStorage {
     if (pendingStatus) {
       query = query.where(
         and(
-          lte(eventBookings.startAt, endTime),
+          lte(eventBookings.startAt, checkEndTime),
           eq(workflowStatuses.isActive, true),
           not(eq(eventBookings.statusId, pendingStatus.id))
         )
@@ -502,13 +640,21 @@ export class DatabaseStorage implements IStorage {
     
     const conflictingBookings = await query;
     
-    // Check each potential conflict for actual overlap
+    // Check each potential conflict for actual overlap including buffer times
     for (const booking of conflictingBookings) {
       const bookingStart = new Date(booking.startAt);
       const bookingEnd = new Date(bookingStart.getTime() + booking.durationMinutes * 60000);
       
-      // Check for overlap: booking_start < our_end AND booking_end > our_start
-      if (bookingStart < endTime && bookingEnd > startTime) {
+      // Apply buffer times to existing booking
+      const bookingBufferedStart = new Date(bookingStart.getTime() - booking.eventType.bufferBeforeMinutes * 60000);
+      const bookingBufferedEnd = new Date(bookingEnd.getTime() + booking.eventType.bufferAfterMinutes * 60000);
+      
+      // Check for overlap with buffer times: 
+      // booking_buffered_start < our_buffered_end AND booking_buffered_end > our_buffered_start
+      if (bookingBufferedStart < checkEndTime && bookingBufferedEnd > checkStartTime) {
+        console.log(`DEBUG - Conflict found: existing booking ${booking.id} (${booking.eventType.name}) conflicts with requested slot`);
+        console.log(`  Existing: ${bookingBufferedStart.toISOString()} - ${bookingBufferedEnd.toISOString()}`);
+        console.log(`  Requested: ${checkStartTime.toISOString()} - ${checkEndTime.toISOString()}`);
         return false; // Conflict found
       }
     }
@@ -524,7 +670,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(activityLogs.timestamp));
   }
 
-  // Calendar-specific operations for public view
+  // Calendar-specific operations for public view with buffer times
   async getBlockedSlotsForCalendar(): Promise<{
     id: string;
     date: string;
@@ -544,20 +690,26 @@ export class DatabaseStorage implements IStorage {
     const approvedBookings = await db
       .select({
         id: eventBookings.id,
-        eventType: eventBookings.eventType,
         startAt: eventBookings.startAt,
         durationMinutes: eventBookings.durationMinutes,
         statusSlug: workflowStatuses.slug,
+        eventType: eventTypes,
       })
       .from(eventBookings)
       .innerJoin(workflowStatuses, eq(eventBookings.statusId, workflowStatuses.id))
+      .innerJoin(eventTypes, eq(eventBookings.eventTypeId, eventTypes.id))
       .where(eq(eventBookings.statusId, approvedStatus.id))
       .orderBy(eventBookings.startAt);
 
     // Transform booking data to calendar format using consistent Europe/Stockholm timezone
+    // Include buffer times to show the full blocked period
     return approvedBookings.map(booking => {
-      const startDate = new Date(booking.startAt);
-      const endDate = new Date(startDate.getTime() + booking.durationMinutes * 60000);
+      const eventStartDate = new Date(booking.startAt);
+      const eventEndDate = new Date(eventStartDate.getTime() + booking.durationMinutes * 60000);
+      
+      // Apply buffer times to show the full blocked period
+      const blockedStartDate = new Date(eventStartDate.getTime() - booking.eventType.bufferBeforeMinutes * 60000);
+      const blockedEndDate = new Date(eventEndDate.getTime() + booking.eventType.bufferAfterMinutes * 60000);
       
       // Use Europe/Stockholm timezone for consistent date/time formatting
       const swedenTimeZone = 'Europe/Stockholm';
@@ -569,7 +721,7 @@ export class DatabaseStorage implements IStorage {
         month: '2-digit',
         day: '2-digit'
       });
-      const dateParts = dateFormatter.formatToParts(startDate);
+      const dateParts = dateFormatter.formatToParts(blockedStartDate);
       const swedenDate = `${dateParts.find(p => p.type === 'year')?.value}-${dateParts.find(p => p.type === 'month')?.value}-${dateParts.find(p => p.type === 'day')?.value}`;
       
       // Format times consistently in Swedish timezone (HH:MM)
@@ -580,14 +732,14 @@ export class DatabaseStorage implements IStorage {
         hour12: false
       });
       
-      const swedenStartTime = timeFormatter.format(startDate);
-      const swedenEndTime = timeFormatter.format(endDate);
+      const swedenStartTime = timeFormatter.format(blockedStartDate);
+      const swedenEndTime = timeFormatter.format(blockedEndDate);
       
       return {
         id: booking.id,
         date: swedenDate, // YYYY-MM-DD format in Swedish timezone
-        startTime: swedenStartTime, // HH:MM format in Swedish timezone
-        endTime: swedenEndTime, // HH:MM format in Swedish timezone
+        startTime: swedenStartTime, // HH:MM format in Swedish timezone (includes buffer)
+        endTime: swedenEndTime, // HH:MM format in Swedish timezone (includes buffer)
         eventType: booking.eventType,
         statusSlug: booking.statusSlug,
       };

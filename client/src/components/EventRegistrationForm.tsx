@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { CalendarDays, Clock, Music, Users } from "lucide-react";
+import { CalendarDays, Clock, Music, Users, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { eventBookingFormSchema, type EventBookingForm } from "@shared/schema";
+import { eventBookingFormSchema, type EventBookingForm, type EventType } from "@shared/schema";
 
 interface EventRegistrationFormProps {
   onSubmit?: (data: EventBookingForm) => void;
@@ -24,29 +24,45 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
 
   const queryClient = useQueryClient();
   
+  // Fetch event types from API
+  const { data: eventTypesData, isLoading: isLoadingEventTypes } = useQuery<{
+    success: boolean;
+    eventTypes: EventType[];
+  }>({
+    queryKey: ['/api/event-types'],
+  });
+  
   const form = useForm<EventBookingForm>({
     resolver: zodResolver(eventBookingFormSchema),
     defaultValues: {
-      eventType: "" as any, // Set to empty string instead of undefined to avoid validation mismatch
+      eventTypeId: "", // Changed to use eventTypeId instead of eventType
       contactName: "",
       contactEmail: "",
       contactPhone: "",
       requestedDate: "",
       startTime: "",
-      durationHours: 2,
+      durationHours: 2, // Will be auto-updated based on selected event type
       additionalNotes: "",
     },
   });
   
+  // Watch for event type changes to auto-populate duration
+  const selectedEventTypeId = form.watch('eventTypeId');
+  
+  useEffect(() => {
+    if (selectedEventTypeId && eventTypesData?.eventTypes) {
+      const selectedEventType = eventTypesData.eventTypes.find((et: EventType) => et.id === selectedEventTypeId);
+      if (selectedEventType) {
+        // Convert minutes to hours for form display
+        const durationHours = selectedEventType.defaultDurationMinutes / 60;
+        form.setValue('durationHours', durationHours);
+      }
+    }
+  }, [selectedEventTypeId, eventTypesData, form]);
+  
   const createBookingMutation = useMutation({
     mutationFn: async (data: EventBookingForm) => {
-      return apiRequest('/api/bookings', {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      return apiRequest('POST', '/api/bookings', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
@@ -83,20 +99,34 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
     }
   };
 
-  const eventTypes = [
-    {
-      id: "luciatag",
-      name: "Luciatåg",
-      description: "Traditionell svensk luciafirande",
-      icon: Music,
-    },
-    {
-      id: "sjungande_julgran",
-      name: "Sjungande Julgran",
-      description: "Julgransuppvisning med sång",
-      icon: Users,
-    },
-  ];
+  // Get event types from API data with fallback icons
+  const eventTypes = eventTypesData?.eventTypes?.map((eventType: EventType) => ({
+    ...eventType,
+    icon: eventType.slug === 'luciatag' ? Music : Users, // Fallback icon mapping
+  })) || [];
+  
+  // Show loading state while fetching event types
+  if (isLoadingEventTypes) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto" data-testid="card-event-registration">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarDays className="w-5 h-5" />
+            Boka ditt julevenemang
+          </CardTitle>
+          <CardDescription>
+            Begär en bokning för luciatåg eller sjungande julgran. Vi kommer att granska din förfrågan och bekräfta tillgänglighet.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center py-8">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Laddar eventtyper...
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full max-w-2xl mx-auto" data-testid="card-event-registration">
@@ -114,7 +144,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
             <FormField
               control={form.control}
-              name="eventType"
+              name="eventTypeId"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Eventtyp</FormLabel>
@@ -285,7 +315,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
                   <FormLabel>Ytterligare anteckningar</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Särskilda krav, antal deltagare, etc."
+                      placeholder="Övrig info, t.ex. önskat antal set, om någon speciell klass önskas, etc."
                       className="resize-none"
                       rows={4}
                       {...field}

@@ -16,8 +16,28 @@ import { z } from "zod";
 import { relations } from "drizzle-orm";
 
 // Enums for better type safety and database constraints
-export const eventTypeEnum = pgEnum("event_type", ["luciatag", "sjungande_julgran"]);
 export const activityActionEnum = pgEnum("activity_action", ["created", "status_changed", "assigned", "updated", "notes_added"]);
+
+// Event types table for configurable event types with buffer times
+export const eventTypes = pgTable("event_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: varchar("slug", { length: 50 }).notNull().unique(), // Machine-readable identifier (e.g., "luciatag", "sjungande_julgran")
+  name: varchar("name", { length: 100 }).notNull(), // Human-readable Swedish name (e.g., "Luciatåg")
+  description: text("description").notNull(), // Detailed Swedish description for the event type
+  icon: varchar("icon", { length: 50 }).notNull(), // Icon identifier for UI display (e.g., "Music", "Users")
+  defaultDurationMinutes: integer("default_duration_minutes").notNull().default(120), // Default duration in minutes
+  bufferBeforeMinutes: integer("buffer_before_minutes").notNull().default(30), // Buffer time before event in minutes
+  bufferAfterMinutes: integer("buffer_after_minutes").notNull().default(30), // Buffer time after event in minutes
+  isActive: boolean("is_active").default(true), // Whether this event type is currently active/bookable
+  displayOrder: integer("display_order").notNull().default(0), // Order for UI display
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+}, (table) => [
+  // Index for active event types ordering
+  index("idx_event_types_active_order").on(table.isActive, table.displayOrder),
+  // Index for slug lookups
+  index("idx_event_types_slug").on(table.slug),
+]);
 
 // Workflow statuses table for configurable booking statuses
 export const workflowStatuses = pgTable("workflow_statuses", {
@@ -68,7 +88,7 @@ export const users = pgTable("users", {
 // Event bookings table with proper temporal types and foreign keys
 export const eventBookings = pgTable("event_bookings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  eventType: eventTypeEnum("event_type").notNull(),
+  eventTypeId: varchar("event_type_id").notNull(), // Foreign key to event_types
   contactName: varchar("contact_name").notNull(),
   contactEmail: varchar("contact_email").notNull(),
   contactPhone: varchar("contact_phone").notNull(),
@@ -85,7 +105,7 @@ export const eventBookings = pgTable("event_bookings", {
   index("idx_event_bookings_start_at").on(table.startAt),
   index("idx_event_bookings_assigned_to").on(table.assignedTo),
   index("idx_event_bookings_calendar").on(table.startAt, table.statusId), // Composite index for calendar queries
-  index("idx_event_bookings_event_type").on(table.eventType),
+  index("idx_event_bookings_event_type").on(table.eventTypeId),
   // Foreign key constraints
   foreignKey({
     columns: [table.assignedTo],
@@ -96,6 +116,11 @@ export const eventBookings = pgTable("event_bookings", {
     columns: [table.statusId],
     foreignColumns: [workflowStatuses.id],
     name: "fk_event_bookings_status_id"
+  }),
+  foreignKey({
+    columns: [table.eventTypeId],
+    foreignColumns: [eventTypes.id],
+    name: "fk_event_bookings_event_type_id"
   }),
 ]);
 
@@ -133,6 +158,10 @@ export const usersRelations = relations(users, ({ many }) => ({
   activityLogs: many(activityLogs),
 }));
 
+export const eventTypesRelations = relations(eventTypes, ({ many }) => ({
+  bookings: many(eventBookings),
+}));
+
 export const workflowStatusesRelations = relations(workflowStatuses, ({ many }) => ({
   bookings: many(eventBookings),
 }));
@@ -145,6 +174,10 @@ export const eventBookingsRelations = relations(eventBookings, ({ one, many }) =
   status: one(workflowStatuses, {
     fields: [eventBookings.statusId],
     references: [workflowStatuses.id],
+  }),
+  eventType: one(eventTypes, {
+    fields: [eventBookings.eventTypeId],
+    references: [eventTypes.id],
   }),
   activityLogs: many(activityLogs),
 }));
@@ -204,9 +237,10 @@ export const assignBookingSchema = z.object({
 
 // Form schema for frontend with date/time splitting
 export const eventBookingFormSchema = z.object({
-  eventType: z.enum(["luciatag", "sjungande_julgran"], {
-    required_error: "Please select an event type",
+  eventTypeId: z.string().uuid({
+    message: "Please select a valid event type",
   }),
+  eventType: z.string().optional(), // For backwards compatibility during migration
   contactName: z.string().min(2, "Name must be at least 2 characters"),
   contactEmail: z.string().email("Please enter a valid email address"),
   contactPhone: z.string().min(10, "Please enter a valid phone number"),
@@ -257,6 +291,9 @@ export type UpdateBookingStatus = z.infer<typeof updateBookingStatusSchema>;
 export type AssignBooking = z.infer<typeof assignBookingSchema>;
 export type EventBookingForm = z.infer<typeof eventBookingFormSchema>;
 export type EventBooking = typeof eventBookings.$inferSelect;
+export type EventType = typeof eventTypes.$inferSelect;
+export type InsertEventType = z.infer<typeof insertEventTypeSchema>;
+export type UpdateEventType = z.infer<typeof updateEventTypeSchema>;
 
 // Workflow status types
 export type WorkflowStatus = typeof workflowStatuses.$inferSelect;
@@ -272,11 +309,56 @@ export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
 export type ActivityLog = typeof activityLogs.$inferSelect;
 
-// Helper types for enum values
-export type EventType = typeof eventBookings.eventType.enumValues[number];
+// Event type schemas
+export const insertEventTypeSchema = createInsertSchema(eventTypes)
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    slug: z.string().min(1).max(50).regex(/^[a-z_]+$/, "Slug must contain only lowercase letters and underscores"),
+    name: z.string().min(1).max(100),
+    description: z.string().min(1),
+    icon: z.string().min(1).max(50),
+    defaultDurationMinutes: z.number().int().min(15).max(480).default(120),
+    bufferBeforeMinutes: z.number().int().min(0).max(240).default(30),
+    bufferAfterMinutes: z.number().int().min(0).max(240).default(30),
+    isActive: z.boolean().default(true),
+    displayOrder: z.number().int().min(0).default(0),
+  });
+
+export const updateEventTypeSchema = createInsertSchema(eventTypes)
+  .pick({
+    name: true,
+    description: true,
+    icon: true,
+    defaultDurationMinutes: true,
+    bufferBeforeMinutes: true,
+    bufferAfterMinutes: true,
+    isActive: true,
+    displayOrder: true,
+  })
+  .extend({
+    name: z.string().min(1).max(100).optional(),
+    description: z.string().min(1).optional(),
+    icon: z.string().min(1).max(50).optional(),
+    defaultDurationMinutes: z.number().int().min(15).max(480).optional(),
+    bufferBeforeMinutes: z.number().int().min(0).max(240).optional(),
+    bufferAfterMinutes: z.number().int().min(0).max(240).optional(),
+    isActive: z.boolean().optional(),
+    displayOrder: z.number().int().min(0).optional(),
+  });
+
+// Helper types
 export type ActivityAction = typeof activityLogs.action.enumValues[number];
 
-// Extended booking type with status relation
+// Extended booking types with relations
 export type EventBookingWithStatus = EventBooking & {
   status: WorkflowStatus;
+};
+
+export type EventBookingWithStatusAndType = EventBooking & {
+  status: WorkflowStatus;
+  eventType: EventType;
 };
