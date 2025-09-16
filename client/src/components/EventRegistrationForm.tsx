@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -11,32 +10,22 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { CalendarDays, Clock, Music, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-const eventRegistrationSchema = z.object({
-  eventType: z.enum(["luciatag", "sjungande_julgran"], {
-    required_error: "Vänligen välj en eventtyp",
-  }),
-  contactName: z.string().min(2, "Namnet måste vara minst 2 tecken"),
-  contactEmail: z.string().email("Vänligen ange en giltig e-postadress"),
-  contactPhone: z.string().min(10, "Vänligen ange ett giltigt telefonnummer"),
-  requestedDate: z.string().min(1, "Vänligen välj ett datum"),
-  startTime: z.string().min(1, "Vänligen välj en starttid"),
-  duration: z.string().default("2"),
-  additionalNotes: z.string().optional(),
-});
-
-type EventRegistrationForm = z.infer<typeof eventRegistrationSchema>;
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { eventBookingFormSchema, type EventBookingForm } from "@shared/schema";
 
 interface EventRegistrationFormProps {
-  onSubmit?: (data: EventRegistrationForm) => void;
+  onSubmit?: (data: EventBookingForm) => void;
 }
 
 export default function EventRegistrationForm({ onSubmit }: EventRegistrationFormProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const form = useForm<EventRegistrationForm>({
-    resolver: zodResolver(eventRegistrationSchema),
+  const queryClient = useQueryClient();
+  
+  const form = useForm<EventBookingForm>({
+    resolver: zodResolver(eventBookingFormSchema),
     defaultValues: {
       eventType: undefined,
       contactName: "",
@@ -44,18 +33,36 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
       contactPhone: "",
       requestedDate: "",
       startTime: "",
-      duration: "2",
+      durationHours: 2,
       additionalNotes: "",
     },
   });
+  
+  const createBookingMutation = useMutation({
+    mutationFn: async (data: EventBookingForm) => {
+      return apiRequest('/api/bookings', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+    },
+  });
 
-  const handleSubmit = async (data: EventRegistrationForm) => {
+  const handleSubmit = async (data: EventBookingForm) => {
     setIsSubmitting(true);
     console.log('Event registration submitted:', data);
     
     try {
       if (onSubmit) {
         await onSubmit(data);
+      } else {
+        // Use the API mutation
+        await createBookingMutation.mutateAsync(data);
       }
       
       toast({
@@ -65,6 +72,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
       
       form.reset();
     } catch (error) {
+      console.error('Booking error:', error);
       toast({
         title: "Fel",
         description: "Något gick fel. Vänligen försök igen.",
@@ -244,7 +252,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
 
               <FormField
                 control={form.control}
-                name="duration"
+                name="durationHours"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center gap-1">
@@ -254,10 +262,12 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
                     <FormControl>
                       <Input 
                         type="number" 
-                        min="1" 
+                        min="0.5" 
                         max="8" 
                         step="0.5" 
-                        {...field} 
+                        {...field}
+                        value={field.value.toString()}
+                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0.5)} 
                         data-testid="input-duration"
                       />
                     </FormControl>
