@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import PublicCalendar from "@/components/PublicCalendar";
 import KanbanBoard from "@/components/KanbanBoard";
 import EventDetailModal from "@/components/EventDetailModal";
 import NotFound from "@/pages/not-found";
+import { useAuth } from "@/hooks/useAuth";
 
 // todo: remove mock functionality
 const mockBlockedSlots = [
@@ -111,30 +112,22 @@ const mockActivityLog = [
 function Router() {
   const [currentView, setCurrentView] = useState<"public" | "admin">("public");
   const [currentPage, setCurrentPage] = useState<"form" | "calendar" | "kanban">("form");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [bookings, setBookings] = useState(mockBookings);
   
-  const mockUser = {
-    name: "Maria Svensson",
-    email: "maria@admin.com",
-  };
-
-  const handleLogin = () => {
-    setIsAuthenticated(true);
-    console.log('User authenticated');
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setCurrentView("public");
-    console.log('User logged out');
-  };
+  const { user, isAuthenticated, isLoading } = useAuth();
+  
+  // Use useEffect to handle admin access redirect to prevent render loops
+  useEffect(() => {
+    if (currentView === "admin" && isAuthenticated && !user?.isAdmin) {
+      setCurrentView("public");
+    }
+  }, [currentView, isAuthenticated, user?.isAdmin]);
 
   const handleViewChange = (view: "public" | "admin") => {
-    if (view === "admin" && !isAuthenticated) {
-      return; // Prevent access to admin without authentication
+    if (view === "admin" && (!isAuthenticated || !user?.isAdmin)) {
+      return; // Prevent access to admin without authentication and admin privileges
     }
     setCurrentView(view);
     // Reset to appropriate default page for each view
@@ -195,7 +188,7 @@ function Router() {
           </div>
         );
       }
-    } else if (currentView === "admin" && isAuthenticated) {
+    } else if (currentView === "admin" && isAuthenticated && user?.isAdmin) {
       if (currentPage === "kanban") {
         return (
           <div className="container mx-auto p-6">
@@ -243,12 +236,8 @@ function Router() {
         <Navigation
           currentView={currentView}
           currentPage={currentPage}
-          isAuthenticated={isAuthenticated}
-          user={isAuthenticated ? mockUser : undefined}
           onViewChange={handleViewChange}
           onPageChange={setCurrentPage}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
         />
         {renderCurrentPage()}
         <EventDetailModal

@@ -13,35 +13,25 @@ import {
 import { CalendarDays, Kanban, LogOut, Settings, User } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 
 interface NavigationProps {
   currentView?: "public" | "admin";
   currentPage?: "form" | "calendar" | "kanban";
-  isAuthenticated?: boolean;
-  user?: {
-    name: string;
-    email: string;
-    avatar?: string;
-  };
   onViewChange?: (view: "public" | "admin") => void;
   onPageChange?: (page: "form" | "calendar" | "kanban") => void;
-  onLogin?: () => void;
-  onLogout?: () => void;
   className?: string;
 }
 
 export default function Navigation({ 
   currentView = "public",
   currentPage = "form",
-  isAuthenticated = false,
-  user,
   onViewChange,
   onPageChange,
-  onLogin,
-  onLogout,
   className 
 }: NavigationProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { user, isAuthenticated, isLoading } = useAuth();
 
   const handleViewChange = (view: "public" | "admin") => {
     console.log(`Switching to ${view} view`);
@@ -59,16 +49,14 @@ export default function Navigation({
 
   const handleLogin = () => {
     console.log('Login clicked');
-    if (onLogin) {
-      onLogin();
-    }
+    // Navigate to the backend login endpoint
+    window.location.href = '/api/login';
   };
 
   const handleLogout = () => {
     console.log('Logout clicked');
-    if (onLogout) {
-      onLogout();
-    }
+    // Navigate to the backend logout endpoint
+    window.location.href = '/api/logout';
   };
 
   return (
@@ -97,13 +85,13 @@ export default function Navigation({
               variant={currentView === "admin" ? "default" : "ghost"}
               size="sm"
               onClick={() => handleViewChange("admin")}
-              disabled={!isAuthenticated}
+              disabled={!isAuthenticated || !user?.isAdmin}
               data-testid="button-view-admin"
             >
               Admin
-              {!isAuthenticated && (
+              {(!isAuthenticated || !user?.isAdmin) && (
                 <Badge variant="outline" className="ml-2 text-xs">
-                  Inloggning krävs
+                  {!isAuthenticated ? "Inloggning krävs" : "Admin-behörighet krävs"}
                 </Badge>
               )}
             </Button>
@@ -177,9 +165,11 @@ export default function Navigation({
                   data-testid="button-user-menu"
                 >
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user?.avatar} alt={user?.name} />
+                    <AvatarImage src={user?.profileImageUrl} alt={`${user?.firstName} ${user?.lastName}`} />
                     <AvatarFallback>
-                      {user?.name ? user.name.slice(0, 2).toUpperCase() : 'U'}
+                      {user?.firstName && user?.lastName 
+                        ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase() 
+                        : user?.email?.charAt(0).toUpperCase() || 'U'}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
@@ -187,8 +177,17 @@ export default function Navigation({
               <DropdownMenuContent className="w-56" align="end">
                 <DropdownMenuLabel>
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">{user?.name || 'User'}</p>
+                    <p className="text-sm font-medium">
+                      {user?.firstName && user?.lastName 
+                        ? `${user.firstName} ${user.lastName}` 
+                        : user?.email || 'User'}
+                    </p>
                     <p className="text-xs text-muted-foreground">{user?.email}</p>
+                    {user?.isAdmin && (
+                      <Badge variant="secondary" className="text-xs w-fit">
+                        Admin
+                      </Badge>
+                    )}
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />

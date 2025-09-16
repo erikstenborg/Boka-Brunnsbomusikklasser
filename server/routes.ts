@@ -2,6 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 import {
   eventBookingFormSchema,
   updateEventBookingSchema,
@@ -15,8 +16,26 @@ import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware
+  await setupAuth(app);
+  
   // Middleware for JSON parsing
   app.use('/api', express.json());
+  
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
   
   // Event Booking Routes
   
@@ -57,9 +76,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // GET /api/bookings - Get all bookings with optional filtering
-  app.get('/api/bookings', async (req, res) => {
+  // GET /api/bookings - Get all bookings with optional filtering (Admin only)
+  app.get('/api/bookings', isAuthenticated, async (req: any, res) => {
     try {
+      // Check if user is admin
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user?.isAdmin) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Access denied. Admin privileges required.' 
+        });
+      }
+      
       const {
         status,
         eventType,
@@ -102,9 +131,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // GET /api/bookings/:id - Get a specific booking
-  app.get('/api/bookings/:id', async (req, res) => {
+  // GET /api/bookings/:id - Get a specific booking (Admin only)
+  app.get('/api/bookings/:id', isAuthenticated, async (req: any, res) => {
     try {
+      // Check if user is admin
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user?.isAdmin) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Access denied. Admin privileges required.' 
+        });
+      }
+      
       const booking = await storage.getEventBooking(req.params.id);
       
       if (!booking) {
@@ -124,9 +163,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // PUT /api/bookings/:id - Update a booking (status, assignment, notes)
-  app.put('/api/bookings/:id', async (req, res) => {
+  // PUT /api/bookings/:id - Update a booking (status, assignment, notes) (Admin only)
+  app.put('/api/bookings/:id', isAuthenticated, async (req: any, res) => {
     try {
+      // Check if user is admin
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user?.isAdmin) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Access denied. Admin privileges required.' 
+        });
+      }
+      
       const updates = updateEventBookingSchema.parse(req.body);
       const existingBooking = await storage.getEventBooking(req.params.id);
       
@@ -188,9 +237,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // GET /api/bookings/:id/activities - Get activity logs for a booking
-  app.get('/api/bookings/:id/activities', async (req, res) => {
+  // GET /api/bookings/:id/activities - Get activity logs for a booking (Admin only)
+  app.get('/api/bookings/:id/activities', isAuthenticated, async (req: any, res) => {
     try {
+      // Check if user is admin
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user?.isAdmin) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Access denied. Admin privileges required.' 
+        });
+      }
+      
       const activities = await storage.getActivityLogsForBooking(req.params.id);
       res.json({ success: true, activities });
     } catch (error) {
