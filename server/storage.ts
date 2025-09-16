@@ -23,7 +23,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, or, not, inArray } from "drizzle-orm";
-import { randomUUID } from "crypto";
+// Removed randomUUID import since we're now using serial IDs
 
 // Interface for storage operations with enhanced calendar queries and buffer times
 export interface IStorage {
@@ -33,46 +33,46 @@ export interface IStorage {
   
   // Event type operations
   getEventTypes(filters?: { isActive?: boolean }): Promise<EventType[]>;
-  getEventType(id: string): Promise<EventType | undefined>;
+  getEventType(id: number): Promise<EventType | undefined>;
   getEventTypeBySlug(slug: string): Promise<EventType | undefined>;
   createEventType(eventType: InsertEventType): Promise<EventType>;
-  updateEventType(id: string, updates: UpdateEventType): Promise<EventType | undefined>;
-  deleteEventType(id: string): Promise<boolean>;
+  updateEventType(id: number, updates: UpdateEventType): Promise<EventType | undefined>;
+  deleteEventType(id: number): Promise<boolean>;
   
   // Workflow status operations
   getWorkflowStatuses(filters?: { isActive?: boolean }): Promise<WorkflowStatus[]>;
-  getWorkflowStatus(id: string): Promise<WorkflowStatus | undefined>;
+  getWorkflowStatus(id: number): Promise<WorkflowStatus | undefined>;
   getWorkflowStatusBySlug(slug: string): Promise<WorkflowStatus | undefined>;
   getDefaultWorkflowStatus(): Promise<WorkflowStatus>;
   createWorkflowStatus(status: InsertWorkflowStatus): Promise<WorkflowStatus>;
-  updateWorkflowStatus(id: string, updates: UpdateWorkflowStatus): Promise<WorkflowStatus | undefined>;
-  deleteWorkflowStatus(id: string): Promise<boolean>;
+  updateWorkflowStatus(id: number, updates: UpdateWorkflowStatus): Promise<WorkflowStatus | undefined>;
+  deleteWorkflowStatus(id: number): Promise<boolean>;
   
   // Event booking operations with status and type relationships
   createEventBooking(booking: InsertEventBooking): Promise<EventBookingWithStatusAndType>;
   createEventBookingFromForm(form: EventBookingForm): Promise<EventBookingWithStatusAndType>;
   getEventBookings(filters?: {
-    statusIds?: string[];
+    statusIds?: number[];
     statusSlugs?: string[];
-    eventTypeId?: string;
-    eventTypeIds?: string[];
+    eventTypeId?: number;
+    eventTypeIds?: number[];
     assignedTo?: string;
     dateRange?: { start: Date; end: Date };
   }): Promise<EventBookingWithStatusAndType[]>;
-  getEventBooking(id: string): Promise<EventBookingWithStatusAndType | undefined>;
-  updateEventBooking(id: string, updates: UpdateEventBooking, userId?: string, userName?: string): Promise<EventBookingWithStatusAndType | undefined>;
+  getEventBooking(id: number): Promise<EventBookingWithStatusAndType | undefined>;
+  updateEventBooking(id: number, updates: UpdateEventBooking, userId?: string, userName?: string): Promise<EventBookingWithStatusAndType | undefined>;
   
   // Calendar-specific queries for availability checking with buffer times
   getBookingsInTimeRange(startTime: Date, endTime: Date): Promise<EventBookingWithStatusAndType[]>;
-  isTimeSlotAvailable(startTime: Date, durationMinutes: number, eventTypeId?: string): Promise<boolean>;
+  isTimeSlotAvailable(startTime: Date, durationMinutes: number, eventTypeId?: number): Promise<boolean>;
   
   // Activity log operations
   createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
-  getActivityLogsForBooking(bookingId: string): Promise<ActivityLog[]>;
+  getActivityLogsForBooking(bookingId: number): Promise<ActivityLog[]>;
   
   // Calendar-specific operations for public view with buffer times
   getBlockedSlotsForCalendar(): Promise<{
-    id: string;
+    id: number;
     date: string;
     startTime: string;
     endTime: string;
@@ -93,7 +93,7 @@ export class DatabaseStorage implements IStorage {
     return await query.orderBy(eventTypes.displayOrder, eventTypes.name);
   }
 
-  async getEventType(id: string): Promise<EventType | undefined> {
+  async getEventType(id: number): Promise<EventType | undefined> {
     const [eventType] = await db
       .select()
       .from(eventTypes)
@@ -112,15 +112,12 @@ export class DatabaseStorage implements IStorage {
   async createEventType(eventTypeData: InsertEventType): Promise<EventType> {
     const [eventType] = await db
       .insert(eventTypes)
-      .values({
-        ...eventTypeData,
-        id: randomUUID(),
-      })
+      .values(eventTypeData)
       .returning();
     return eventType;
   }
 
-  async updateEventType(id: string, updates: UpdateEventType): Promise<EventType | undefined> {
+  async updateEventType(id: number, updates: UpdateEventType): Promise<EventType | undefined> {
     const [eventType] = await db
       .update(eventTypes)
       .set({
@@ -132,7 +129,7 @@ export class DatabaseStorage implements IStorage {
     return eventType;
   }
 
-  async deleteEventType(id: string): Promise<boolean> {
+  async deleteEventType(id: number): Promise<boolean> {
     // Check if this event type is in use by any bookings
     const [bookingUsingEventType] = await db
       .select({ count: eventBookings.id })
@@ -183,7 +180,7 @@ export class DatabaseStorage implements IStorage {
     return await query.orderBy(workflowStatuses.displayOrder, workflowStatuses.name);
   }
 
-  async getWorkflowStatus(id: string): Promise<WorkflowStatus | undefined> {
+  async getWorkflowStatus(id: number): Promise<WorkflowStatus | undefined> {
     const [status] = await db
       .select()
       .from(workflowStatuses)
@@ -223,15 +220,12 @@ export class DatabaseStorage implements IStorage {
 
     const [status] = await db
       .insert(workflowStatuses)
-      .values({
-        ...statusData,
-        id: randomUUID(),
-      })
+      .values(statusData)
       .returning();
     return status;
   }
 
-  async updateWorkflowStatus(id: string, updates: UpdateWorkflowStatus): Promise<WorkflowStatus | undefined> {
+  async updateWorkflowStatus(id: number, updates: UpdateWorkflowStatus): Promise<WorkflowStatus | undefined> {
     // If this is being set as default, unset other defaults first
     if (updates.isDefault) {
       await db
@@ -251,7 +245,7 @@ export class DatabaseStorage implements IStorage {
     return status;
   }
 
-  async deleteWorkflowStatus(id: string): Promise<boolean> {
+  async deleteWorkflowStatus(id: number): Promise<boolean> {
     // Check if this status is in use by any bookings
     const [bookingUsingStatus] = await db
       .select({ count: eventBookings.id })
