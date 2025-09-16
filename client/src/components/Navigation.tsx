@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { CalendarDays, Kanban, LogOut, Settings, User } from "lucide-react";
+import { CalendarDays, Kanban, LogOut } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -165,7 +165,7 @@ export default function Navigation({
                   data-testid="button-user-menu"
                 >
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user?.profileImageUrl} alt={`${user?.firstName} ${user?.lastName}`} />
+                    <AvatarImage src={user?.profileImageUrl || undefined} alt={`${user?.firstName} ${user?.lastName}`} />
                     <AvatarFallback>
                       {user?.firstName && user?.lastName 
                         ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase() 
@@ -190,15 +190,6 @@ export default function Navigation({
                     )}
                   </div>
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => console.log('Profile clicked')}>
-                  <User className="mr-2 h-4 w-4" />
-                  Profil
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => console.log('Settings clicked')}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Inställningar
-                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />

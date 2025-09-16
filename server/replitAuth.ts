@@ -86,7 +86,7 @@ async function upsertUser(
     email: claims["email"],
     firstName: claims["first_name"],
     lastName: claims["last_name"],
-    profileImageUrl: claims["profile_image_url"],
+    profileImageUrl: claims["picture"],
   });
 }
 
@@ -115,12 +115,12 @@ export async function setupAuth(app: Express) {
     }
   };
 
-  // Function to create strategy with dynamic callback URL
-  const createStrategy = (callbackURL: string) => {
-    console.log('Creating strategy with dynamic callback URL:', callbackURL);
+  // Function to create strategy with dynamic callback URL and name
+  const createStrategy = (callbackURL: string, strategyName: string) => {
+    console.log('Creating strategy with dynamic callback URL:', callbackURL, 'and name:', strategyName);
     return new Strategy(
       {
-        name: "replitauth",
+        name: strategyName,
         config,
         scope: "openid email profile offline_access",
         callbackURL: callbackURL,
@@ -138,11 +138,9 @@ export async function setupAuth(app: Express) {
     try {
       // Create dynamic callback URL based on current request
       const callbackURL = `${req.protocol}://${req.get('host')}/api/callback`;
-      const strategy = createStrategy(callbackURL);
-      
-      // Use consistent strategy name 
       const strategyName = "replitauth-dynamic";
-      strategy.name = strategyName;
+      const strategy = createStrategy(callbackURL, strategyName);
+      
       passport.use(strategyName, strategy);
       
       passport.authenticate(strategyName, {
@@ -151,7 +149,8 @@ export async function setupAuth(app: Express) {
       })(req, res, next);
     } catch (error) {
       console.error('Error in passport.authenticate:', error);
-      res.status(500).json({ error: 'Authentication failed', details: error.message });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      res.status(500).json({ error: 'Authentication failed', details: errorMessage });
     }
   });
 
@@ -161,11 +160,9 @@ export async function setupAuth(app: Express) {
     try {
       // Create dynamic callback URL based on current request  
       const callbackURL = `${req.protocol}://${req.get('host')}/api/callback`;
-      const strategy = createStrategy(callbackURL);
-      
-      // Use consistent strategy name for callback
       const strategyName = "replitauth-dynamic";
-      strategy.name = strategyName;
+      const strategy = createStrategy(callbackURL, strategyName);
+      
       passport.use(strategyName, strategy);
       
       passport.authenticate(strategyName, {
@@ -174,7 +171,8 @@ export async function setupAuth(app: Express) {
       })(req, res, next);
     } catch (error) {
       console.error('Error in callback authentication:', error);
-      res.status(500).json({ error: 'Callback authentication failed', details: error.message });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      res.status(500).json({ error: 'Callback authentication failed', details: errorMessage });
     }
   });
 

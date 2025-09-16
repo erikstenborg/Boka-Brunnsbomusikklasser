@@ -142,7 +142,7 @@ export const insertEventBookingSchema = createInsertSchema(eventBookings)
   })
   .extend({
     // Accept Date objects for temporal data (as Drizzle expects)
-    startAt: z.date("Invalid date format"),
+    startAt: z.date({ invalid_type_error: "Invalid date format" }),
     durationMinutes: z.number().min(30, "Minimum duration is 30 minutes").max(480, "Maximum duration is 8 hours"),
   });
 
