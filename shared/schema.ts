@@ -8,6 +8,7 @@ import {
   text,
   boolean,
   integer,
+  serial,
   pgEnum,
   foreignKey,
 } from "drizzle-orm/pg-core";
@@ -20,7 +21,7 @@ export const activityActionEnum = pgEnum("activity_action", ["created", "status_
 
 // Event types table for configurable event types with buffer times
 export const eventTypes = pgTable("event_types", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: serial("id").primaryKey(),
   slug: varchar("slug", { length: 50 }).notNull().unique(), // Machine-readable identifier (e.g., "luciatag", "sjungande_julgran")
   name: varchar("name", { length: 100 }).notNull(), // Human-readable Swedish name (e.g., "Luciatåg")
   description: text("description").notNull(), // Detailed Swedish description for the event type
@@ -41,7 +42,7 @@ export const eventTypes = pgTable("event_types", {
 
 // Workflow statuses table for configurable booking statuses
 export const workflowStatuses = pgTable("workflow_statuses", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: serial("id").primaryKey(),
   slug: varchar("slug", { length: 50 }).notNull().unique(), // Machine-readable identifier (e.g., "pending", "approved")
   name: varchar("name", { length: 100 }).notNull(), // Human-readable Swedish name (e.g., "Väntar på granskning")
   displayOrder: integer("display_order").notNull().default(0), // Order for kanban columns and dropdowns
@@ -87,15 +88,15 @@ export const users = pgTable("users", {
 
 // Event bookings table with proper temporal types and foreign keys
 export const eventBookings = pgTable("event_bookings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  eventTypeId: varchar("event_type_id").notNull(), // Foreign key to event_types
+  id: serial("id").primaryKey(),
+  eventTypeId: integer("event_type_id").notNull(), // Foreign key to event_types
   contactName: varchar("contact_name").notNull(),
   contactEmail: varchar("contact_email").notNull(),
   contactPhone: varchar("contact_phone").notNull(),
   startAt: timestamp("start_at", { withTimezone: true }).notNull(), // Combined date and time with timezone
   durationMinutes: integer("duration_minutes").notNull(), // Duration in minutes for precise scheduling
   additionalNotes: text("additional_notes"),
-  statusId: varchar("status_id").notNull(), // Foreign key to workflow_statuses
+  statusId: integer("status_id").notNull(), // Foreign key to workflow_statuses
   assignedTo: varchar("assigned_to"), // Foreign key to users.id
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -126,8 +127,8 @@ export const eventBookings = pgTable("event_bookings", {
 
 // Activity logs table for tracking changes with foreign keys and indexes
 export const activityLogs = pgTable("activity_logs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  bookingId: varchar("booking_id").notNull(),
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(),
   action: activityActionEnum("action").notNull(),
   details: text("details").notNull(),
   userId: varchar("user_id"), // Who made the change (null for system changes)
@@ -201,7 +202,7 @@ export type User = typeof users.$inferSelect;
 export const insertEventBookingSchema = createInsertSchema(eventBookings)
   .omit({
     id: true,
-    status: true,
+    statusId: true,
     assignedTo: true,
     createdAt: true,
     updatedAt: true,
@@ -219,14 +220,14 @@ export const updateEventBookingSchema = createInsertSchema(eventBookings)
     additionalNotes: true,
   })
   .extend({
-    // Status ID must be a valid UUID string
-    statusId: z.string().uuid().optional(),
+    // Status ID must be a valid integer
+    statusId: z.number().int().positive().optional(),
     assignedTo: z.string().optional(),
   });
 
 // Admin-specific schemas for kanban workflow operations
 export const updateBookingStatusSchema = z.object({
-  statusId: z.string().uuid({
+  statusId: z.number().int().positive({
     message: "Valid status ID is required",
   }),
 });
@@ -237,7 +238,7 @@ export const assignBookingSchema = z.object({
 
 // Form schema for frontend with date/time splitting
 export const eventBookingFormSchema = z.object({
-  eventTypeId: z.string().uuid({
+  eventTypeId: z.number().int().positive({
     message: "Please select a valid event type",
   }),
   eventType: z.string().optional(), // For backwards compatibility during migration
