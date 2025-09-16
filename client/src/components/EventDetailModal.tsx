@@ -65,21 +65,21 @@ const eventTypeConfig = {
     name: "Luciatåg",
     icon: Music,
     color: "bg-primary/10 text-primary border-primary/20",
-    description: "Traditional Swedish Lucia procession",
+    description: "Traditionell svensk luciafirande",
   },
   sjungande_julgran: {
     name: "Sjungande Julgran",
     icon: Users,
     color: "bg-secondary/10 text-secondary-foreground border-secondary/20",
-    description: "Singing Christmas tree performance",
+    description: "Julgransuppvisning med sång",
   },
 };
 
 const statusConfig = {
-  pending: { color: "bg-blue-500", label: "New Request" },
-  reviewing: { color: "bg-yellow-500", label: "Under Review" },
-  approved: { color: "bg-green-500", label: "Approved" },
-  completed: { color: "bg-gray-500", label: "Completed" },
+  pending: { color: "bg-blue-500", label: "Ny förfrågan" },
+  reviewing: { color: "bg-yellow-500", label: "Under granskning" },
+  approved: { color: "bg-green-500", label: "Godkänt" },
+  completed: { color: "bg-gray-500", label: "Slutfört" },
 };
 
 export default function EventDetailModal({ 
@@ -147,10 +147,10 @@ export default function EventDetailModal({
             <div className="space-y-2">
               <DialogTitle className="flex items-center gap-3">
                 <EventIcon className="w-6 h-6 text-primary" />
-                {eventConfig.name} Booking
+                {eventConfig.name} Bokning
               </DialogTitle>
               <DialogDescription>
-                Booking ID: {booking.id}
+                Boknings-ID: {booking.id}
               </DialogDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -168,13 +168,13 @@ export default function EventDetailModal({
             <div className="space-y-4">
               <h3 className="font-semibold flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
-                Event Details
+                Evenemangdetaljer
               </h3>
               
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="space-y-3">
                   <div>
-                    <span className="text-muted-foreground">Event Type:</span>
+                    <span className="text-muted-foreground">Eventtyp:</span>
                     <div className="flex items-center gap-2 mt-1">
                       <Badge className={eventConfig.color}>
                         <EventIcon className="w-3 h-3 mr-1" />
@@ -187,7 +187,7 @@ export default function EventDetailModal({
                   </div>
                   
                   <div>
-                    <span className="text-muted-foreground">Date:</span>
+                    <span className="text-muted-foreground">Datum:</span>
                     <p className="font-medium" data-testid="text-event-date">
                       {formatDate(booking.requestedDate)}
                     </p>
@@ -196,18 +196,18 @@ export default function EventDetailModal({
                 
                 <div className="space-y-3">
                   <div>
-                    <span className="text-muted-foreground">Time:</span>
+                    <span className="text-muted-foreground">Tid:</span>
                     <p className="font-medium" data-testid="text-event-time">
                       {booking.startTime} - {getEndTime()}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Duration: {booking.duration} hours
+                      Varaktighet: {booking.duration} timmar
                     </p>
                   </div>
                   
                   {booking.assignedTo && (
                     <div>
-                      <span className="text-muted-foreground">Assigned to:</span>
+                      <span className="text-muted-foreground">Tilldelad till:</span>
                       <p className="font-medium flex items-center gap-1" data-testid="text-assigned-to">
                         <UserCheck className="w-3 h-3" />
                         {booking.assignedTo}
@@ -224,14 +224,14 @@ export default function EventDetailModal({
             <div className="space-y-4">
               <h3 className="font-semibold flex items-center gap-2">
                 <User className="w-4 h-4" />
-                Contact Information
+                Kontaktinformation
               </h3>
               
               <div className="grid grid-cols-1 gap-3 text-sm">
                 <div className="flex items-center gap-3">
                   <User className="w-4 h-4 text-muted-foreground" />
                   <div>
-                    <span className="text-muted-foreground">Name:</span>
+                    <span className="text-muted-foreground">Namn:</span>
                     <p className="font-medium" data-testid="text-contact-name">
                       {booking.contactName}
                     </p>
@@ -241,7 +241,7 @@ export default function EventDetailModal({
                 <div className="flex items-center gap-3">
                   <Mail className="w-4 h-4 text-muted-foreground" />
                   <div>
-                    <span className="text-muted-foreground">Email:</span>
+                    <span className="text-muted-foreground">E-post:</span>
                     <p className="font-medium" data-testid="text-contact-email">
                       {booking.contactEmail}
                     </p>
@@ -251,7 +251,7 @@ export default function EventDetailModal({
                 <div className="flex items-center gap-3">
                   <Phone className="w-4 h-4 text-muted-foreground" />
                   <div>
-                    <span className="text-muted-foreground">Phone:</span>
+                    <span className="text-muted-foreground">Telefon:</span>
                     <p className="font-medium" data-testid="text-contact-phone">
                       {booking.contactPhone}
                     </p>
@@ -266,7 +266,7 @@ export default function EventDetailModal({
                 <div className="space-y-4">
                   <h3 className="font-semibold flex items-center gap-2">
                     <MessageSquare className="w-4 h-4" />
-                    Additional Notes
+                    Ytterligare anteckningar
                   </h3>
                   <div className="p-3 bg-muted/50 rounded-lg">
                     <p className="text-sm" data-testid="text-additional-notes">
@@ -281,7 +281,7 @@ export default function EventDetailModal({
 
             {/* Status Actions */}
             <div className="space-y-4">
-              <h3 className="font-semibold">Update Status</h3>
+              <h3 className="font-semibold">Uppdatera status</h3>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(statusConfig).map(([status, config]) => (
                   <Button
@@ -305,7 +305,7 @@ export default function EventDetailModal({
             <div className="space-y-4">
               <h3 className="font-semibold flex items-center gap-2">
                 <History className="w-4 h-4" />
-                Activity Log
+                Aktivitetslogg
               </h3>
               
               {activityLog.length > 0 ? (
@@ -328,7 +328,7 @@ export default function EventDetailModal({
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+                <p className="text-sm text-muted-foreground">Ingen aktivitet registrerad ännu.</p>
               )}
             </div>
           </div>

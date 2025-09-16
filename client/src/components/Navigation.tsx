@@ -91,7 +91,7 @@ export default function Navigation({
               onClick={() => handleViewChange("public")}
               data-testid="button-view-public"
             >
-              Public
+              Offentlig
             </Button>
             <Button
               variant={currentView === "admin" ? "default" : "ghost"}
@@ -103,7 +103,7 @@ export default function Navigation({
               Admin
               {!isAuthenticated && (
                 <Badge variant="outline" className="ml-2 text-xs">
-                  Login Required
+                  Inloggning krävs
                 </Badge>
               )}
             </Button>
@@ -120,7 +120,7 @@ export default function Navigation({
                 onClick={() => handlePageChange("form")}
                 data-testid="button-page-form"
               >
-                Book Event
+                Boka evenemang
               </Button>
               <Button
                 variant={currentPage === "calendar" ? "secondary" : "ghost"}
@@ -128,7 +128,7 @@ export default function Navigation({
                 onClick={() => handlePageChange("calendar")}
                 data-testid="button-page-calendar"
               >
-                View Calendar
+                Visa kalender
               </Button>
             </>
           )}
@@ -142,7 +142,7 @@ export default function Navigation({
                 data-testid="button-page-kanban"
               >
                 <Kanban className="h-4 w-4 mr-1" />
-                Workflow
+                Arbetsflöde
               </Button>
               <Button
                 variant={currentPage === "calendar" ? "secondary" : "ghost"}
@@ -151,7 +151,7 @@ export default function Navigation({
                 data-testid="button-page-admin-calendar"
               >
                 <CalendarDays className="h-4 w-4 mr-1" />
-                Calendar
+                Kalender
               </Button>
             </>
           )}
@@ -166,7 +166,7 @@ export default function Navigation({
               onClick={handleLogin}
               data-testid="button-login"
             >
-              Login with Google
+              Logga in med Google
             </Button>
           ) : (
             <DropdownMenu>
@@ -194,16 +194,16 @@ export default function Navigation({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => console.log('Profile clicked')}>
                   <User className="mr-2 h-4 w-4" />
-                  Profile
+                  Profil
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => console.log('Settings clicked')}>
                   <Settings className="mr-2 h-4 w-4" />
-                  Settings
+                  Inställningar
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
-                  Logout
+                  Logga ut
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

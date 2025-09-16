@@ -201,8 +201,8 @@ function Router() {
           <div className="container mx-auto p-6">
             <div className="max-w-7xl mx-auto">
               <div className="mb-6">
-                <h1 className="text-3xl font-bold tracking-tight">Event Management</h1>
-                <p className="text-muted-foreground">Manage Christmas event bookings through the workflow</p>
+                <h1 className="text-3xl font-bold tracking-tight">Evenemanghantering</h1>
+                <p className="text-muted-foreground">Hantera julevenemangsbokningar genom arbetsflödet</p>
               </div>
               <KanbanBoard 
                 bookings={bookings}
@@ -216,8 +216,8 @@ function Router() {
         return (
           <div className="container mx-auto p-6">
             <div className="mb-6">
-              <h1 className="text-3xl font-bold tracking-tight">Admin Calendar</h1>
-              <p className="text-muted-foreground">Full event calendar with management capabilities</p>
+              <h1 className="text-3xl font-bold tracking-tight">Adminkalender</h1>
+              <p className="text-muted-foreground">Fullständig evenemangkalender med hanteringsmöjligheter</p>
             </div>
             <PublicCalendar 
               blockedSlots={mockBlockedSlots} 
@@ -225,8 +225,8 @@ function Router() {
             />
             <div className="mt-4 p-4 bg-muted/50 rounded-lg">
               <p className="text-sm text-muted-foreground">
-                <strong>Admin View:</strong> This calendar will show full event details and allow direct management. 
-                Click events to open detail modals and manage bookings.
+                <strong>Adminvy:</strong> Denna kalender visar fullständiga evenemangdetaljer och tillåter direkt hantering. 
+                Klicka på evenemang för att öppna detaljmodaler och hantera bokningar.
               </p>
             </div>
           </div>

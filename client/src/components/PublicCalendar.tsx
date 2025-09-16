@@ -25,8 +25,8 @@ export default function PublicCalendar({ blockedSlots = [], className }: PublicC
   const currentMonth = currentDate.getMonth();
   
   const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
+    "Januari", "Februari", "Mars", "April", "Maj", "Juni",
+    "Juli", "Augusti", "September", "Oktober", "November", "December"
   ];
   
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -105,7 +105,7 @@ export default function PublicCalendar({ blockedSlots = [], className }: PublicC
                       {slot.startTime} - {slot.endTime}
                     </div>
                     <div className="truncate text-[10px]">
-                      Booked
+                      Bokad
                     </div>
                   </div>
                 ))}
@@ -131,7 +131,7 @@ export default function PublicCalendar({ blockedSlots = [], className }: PublicC
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="w-5 h-5" />
-            Available Time Slots
+            Tillgängliga tidsintervall
           </CardTitle>
           <div className="flex items-center space-x-2">
             <Button
@@ -161,18 +161,18 @@ export default function PublicCalendar({ blockedSlots = [], className }: PublicC
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-muted rounded" />
-            <span>Time slots unavailable</span>
+            <span>Tidsintervall ej tillgängliga</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-background border border-border rounded" />
-            <span>Available for booking</span>
+            <span>Tillgängligt för bokning</span>
           </div>
         </div>
       </CardHeader>
       
       <CardContent>
         <div className="grid grid-cols-7 gap-0 mb-2">
-          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+          {["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"].map((day) => (
             <div
               key={day}
               className="h-8 flex items-center justify-center text-sm font-medium text-muted-foreground border-b border-border"
@@ -188,8 +188,8 @@ export default function PublicCalendar({ blockedSlots = [], className }: PublicC
         
         <div className="mt-4 p-3 bg-muted/50 rounded-lg">
           <p className="text-sm text-muted-foreground">
-            <strong>Note:</strong> This calendar shows when time slots are already booked. 
-            Choose an available time when submitting your event request.
+            <strong>OBS:</strong> Denna kalender visar när tidsintervall redan är bokade. 
+            Välj en tillgänglig tid när du skickar din eventförfrågan.
           </p>
         </div>
       </CardContent>

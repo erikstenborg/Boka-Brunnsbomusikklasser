@@ -14,13 +14,13 @@ import { useToast } from "@/hooks/use-toast";
 
 const eventRegistrationSchema = z.object({
   eventType: z.enum(["luciatag", "sjungande_julgran"], {
-    required_error: "Please select an event type",
+    required_error: "Vänligen välj en eventtyp",
   }),
-  contactName: z.string().min(2, "Name must be at least 2 characters"),
-  contactEmail: z.string().email("Please enter a valid email address"),
-  contactPhone: z.string().min(10, "Please enter a valid phone number"),
-  requestedDate: z.string().min(1, "Please select a date"),
-  startTime: z.string().min(1, "Please select a start time"),
+  contactName: z.string().min(2, "Namnet måste vara minst 2 tecken"),
+  contactEmail: z.string().email("Vänligen ange en giltig e-postadress"),
+  contactPhone: z.string().min(10, "Vänligen ange ett giltigt telefonnummer"),
+  requestedDate: z.string().min(1, "Vänligen välj ett datum"),
+  startTime: z.string().min(1, "Vänligen välj en starttid"),
   duration: z.string().default("2"),
   additionalNotes: z.string().optional(),
 });
@@ -59,15 +59,15 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
       }
       
       toast({
-        title: "Registration Submitted!",
-        description: "We'll review your request and get back to you soon.",
+        title: "Anmälan skickad!",
+        description: "Vi kommer att granska din förfrågan och återkomma snart.",
       });
       
       form.reset();
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Something went wrong. Please try again.",
+        title: "Fel",
+        description: "Något gick fel. Vänligen försök igen.",
         variant: "destructive",
       });
     } finally {
@@ -79,13 +79,13 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
     {
       id: "luciatag",
       name: "Luciatåg",
-      description: "Traditional Swedish Lucia procession",
+      description: "Traditionell svensk luciafirande",
       icon: Music,
     },
     {
       id: "sjungande_julgran",
       name: "Sjungande Julgran",
-      description: "Singing Christmas tree performance",
+      description: "Julgransuppvisning med sång",
       icon: Users,
     },
   ];
@@ -95,10 +95,10 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <CalendarDays className="w-5 h-5" />
-          Book Your Christmas Event
+          Boka ditt julevenemang
         </CardTitle>
         <CardDescription>
-          Request a booking for luciatåg or sjungande julgran. We'll review your request and confirm availability.
+          Begär en bokning för luciatåg eller sjungande julgran. Vi kommer att granska din förfrågan och bekräfta tillgänglighet.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -109,7 +109,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
               name="eventType"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Event Type</FormLabel>
+                  <FormLabel>Eventtyp</FormLabel>
                   <FormControl>
                     <RadioGroup
                       onValueChange={field.onChange}
@@ -153,10 +153,10 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
                 name="contactName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Contact Name</FormLabel>
+                    <FormLabel>Kontaktnamn</FormLabel>
                     <FormControl>
                       <Input 
-                        placeholder="Your full name" 
+                        placeholder="Ditt fullständiga namn" 
                         {...field} 
                         data-testid="input-contact-name"
                       />
@@ -171,11 +171,11 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
                 name="contactEmail"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>E-post</FormLabel>
                     <FormControl>
                       <Input 
                         type="email" 
-                        placeholder="your@email.com" 
+                        placeholder="din@epost.se" 
                         {...field} 
                         data-testid="input-contact-email"
                       />
@@ -191,7 +191,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
               name="contactPhone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Phone Number</FormLabel>
+                  <FormLabel>Telefonnummer</FormLabel>
                   <FormControl>
                     <Input 
                       type="tel" 
@@ -211,7 +211,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
                 name="requestedDate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Requested Date</FormLabel>
+                    <FormLabel>Önskat datum</FormLabel>
                     <FormControl>
                       <Input 
                         type="date" 
@@ -229,7 +229,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
                 name="startTime"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Start Time</FormLabel>
+                    <FormLabel>Starttid</FormLabel>
                     <FormControl>
                       <Input 
                         type="time" 
@@ -249,7 +249,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
                   <FormItem>
                     <FormLabel className="flex items-center gap-1">
                       <Clock className="w-4 h-4" />
-                      Duration (hours)
+                      Varaktighet (timmar)
                     </FormLabel>
                     <FormControl>
                       <Input 
@@ -272,10 +272,10 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
               name="additionalNotes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Additional Notes</FormLabel>
+                  <FormLabel>Ytterligare anteckningar</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Any special requirements, number of participants, etc."
+                      placeholder="Särskilda krav, antal deltagare, etc."
                       className="resize-none"
                       rows={4}
                       {...field}
@@ -293,7 +293,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
               disabled={isSubmitting}
               data-testid="button-submit-registration"
             >
-              {isSubmitting ? "Submitting..." : "Submit Event Request"}
+              {isSubmitting ? "Skickar..." : "Skicka eventförfrågan"}
             </Button>
           </form>
         </Form>

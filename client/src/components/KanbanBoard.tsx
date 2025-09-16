@@ -48,10 +48,10 @@ interface KanbanBoardProps {
 }
 
 const columns: KanbanColumn[] = [
-  { id: 'pending', title: 'New Requests', status: 'pending', color: 'bg-blue-50 border-blue-200' },
-  { id: 'reviewing', title: 'Under Review', status: 'reviewing', color: 'bg-yellow-50 border-yellow-200' },
-  { id: 'approved', title: 'Approved', status: 'approved', color: 'bg-green-50 border-green-200' },
-  { id: 'completed', title: 'Completed', status: 'completed', color: 'bg-gray-50 border-gray-200' },
+  { id: 'pending', title: 'Nya förfrågningar', status: 'pending', color: 'bg-blue-50 border-blue-200' },
+  { id: 'reviewing', title: 'Under granskning', status: 'reviewing', color: 'bg-yellow-50 border-yellow-200' },
+  { id: 'approved', title: 'Godkänt', status: 'approved', color: 'bg-green-50 border-green-200' },
+  { id: 'completed', title: 'Slutfört', status: 'completed', color: 'bg-gray-50 border-gray-200' },
 ];
 
 const eventTypeConfig = {
@@ -193,7 +193,7 @@ export default function KanbanBoard({
                   </AvatarFallback>
                 </Avatar>
                 <span className="text-xs text-muted-foreground">
-                  Assigned to {booking.assignedTo}
+                  Tilldelad till {booking.assignedTo}
                 </span>
               </div>
             )}
@@ -238,7 +238,7 @@ export default function KanbanBoard({
               
               {columnBookings.length === 0 && (
                 <div className="flex items-center justify-center h-32 text-muted-foreground">
-                  <p className="text-sm">No bookings</p>
+                  <p className="text-sm">Inga bokningar</p>
                 </div>
               )}
             </div>
