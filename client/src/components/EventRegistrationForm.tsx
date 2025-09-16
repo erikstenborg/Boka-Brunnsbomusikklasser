@@ -27,7 +27,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
   const form = useForm<EventBookingForm>({
     resolver: zodResolver(eventBookingFormSchema),
     defaultValues: {
-      eventType: undefined,
+      eventType: "" as any, // Set to empty string instead of undefined to avoid validation mismatch
       contactName: "",
       contactEmail: "",
       contactPhone: "",
