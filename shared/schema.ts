@@ -239,7 +239,7 @@ export const assignBookingSchema = z.object({
 // Form schema for frontend with date/time splitting
 export const eventBookingFormSchema = z.object({
   eventTypeId: z.number().int().positive({
-    message: "Please select a valid event type",
+    message: "Vänligen välj en giltig eventtyp",
   }),
   eventType: z.string().optional(), // For backwards compatibility during migration
   contactName: z.string().min(2, "Name must be at least 2 characters"),

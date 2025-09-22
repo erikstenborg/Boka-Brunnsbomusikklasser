@@ -37,7 +37,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
     resolver: zodResolver(eventBookingFormSchema.extend({
       // Override eventTypeId to accept string from form and convert to number
       eventTypeId: z.coerce.number().int().positive({
-        message: "Please select a valid event type",
+        message: "Vänligen välj en giltig eventtyp",
       }),
     })),
     defaultValues: {
@@ -175,7 +175,7 @@ export default function EventRegistrationForm({ onSubmit }: EventRegistrationFor
                               className="peer sr-only"
                             />
                             <Label
-                              htmlFor={typeIdString}
+                              htmlFor={`eventtype-${typeIdString}`}
                               className="flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover-elevate cursor-pointer transition-colors peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5"
                               data-testid={`label-event-${type.id}`}
                             >
