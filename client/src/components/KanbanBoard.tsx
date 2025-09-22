@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Calendar, Clock, Mail, Phone, User, Music, Users, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { type EventBookingWithStatusAndType, type ActivityLog } from "@shared/schema";
+import { type EventBookingWithStatusAndType, type ActivityLog, type WorkflowStatus } from "@shared/schema";
 
 // Use the shared schema types
 type EventBooking = EventBookingWithStatusAndType;
@@ -26,12 +27,19 @@ interface KanbanBoardProps {
   className?: string;
 }
 
-const columns: KanbanColumn[] = [
-  { id: 'pending', title: 'Nya förfrågningar', status: 'pending', color: 'bg-blue-50 border-blue-200' },
-  { id: 'reviewing', title: 'Under granskning', status: 'reviewing', color: 'bg-yellow-50 border-yellow-200' },
-  { id: 'approved', title: 'Godkänt', status: 'approved', color: 'bg-green-50 border-green-200' },
-  { id: 'completed', title: 'Slutfört', status: 'completed', color: 'bg-gray-50 border-gray-200' },
-];
+// Map database colors to Tailwind classes
+const getColumnColor = (color: string | null): string => {
+  const colorMap: Record<string, string> = {
+    white: 'bg-slate-50 border-slate-200',
+    pink: 'bg-pink-50 border-pink-200', 
+    orange: 'bg-orange-50 border-orange-200',
+    yellow: 'bg-yellow-50 border-yellow-200',
+    green: 'bg-green-50 border-green-200',
+    blue: 'bg-blue-50 border-blue-200',
+    gray: 'bg-gray-50 border-gray-200',
+  };
+  return colorMap[color || 'gray'] || 'bg-gray-50 border-gray-200';
+};
 
 const eventTypeConfig = {
   luciatag: {
@@ -58,6 +66,27 @@ export default function KanbanBoard({
   className 
 }: KanbanBoardProps) {
   const [draggedBooking, setDraggedBooking] = useState<EventBooking | null>(null);
+  
+  // Fetch workflow statuses
+  const { data: workflowStatusesData, isLoading: isLoadingStatuses } = useQuery<{
+    success: boolean;
+    statuses: WorkflowStatus[];
+  }>({
+    queryKey: ['/api/workflow-statuses'],
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+  
+  const workflowStatuses = workflowStatusesData?.statuses || [];
+  
+  // Create columns from workflow statuses
+  const columns: KanbanColumn[] = workflowStatuses
+    .sort((a: WorkflowStatus, b: WorkflowStatus) => a.displayOrder - b.displayOrder)
+    .map((status: WorkflowStatus) => ({
+      id: status.slug,
+      title: status.name,
+      status: status.slug,
+      color: getColumnColor(status.color),
+    }));
 
   const getBookingsByStatus = (status: string) => {
     return bookings.filter(booking => booking.status.slug === status);
@@ -195,9 +224,29 @@ export default function KanbanBoard({
     );
   };
 
+  if (isLoadingStatuses) {
+    return (
+      <div className={cn("w-full", className)} data-testid="kanban-board">
+        <div className="flex items-center justify-center h-64">
+          <p className="text-muted-foreground">Laddar workflow status...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (columns.length === 0) {
+    return (
+      <div className={cn("w-full", className)} data-testid="kanban-board">
+        <div className="flex items-center justify-center h-64">
+          <p className="text-muted-foreground">Inga workflow status hittades</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={cn("w-full", className)} data-testid="kanban-board">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className={`grid grid-cols-1 gap-6`} style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
         {columns.map((column) => {
           const columnBookings = getBookingsByStatus(column.status);
           

@@ -111,6 +111,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // GET /api/workflow-statuses - Get all active workflow statuses for kanban board
+  app.get('/api/workflow-statuses', async (req, res) => {
+    try {
+      const statuses = await storage.getWorkflowStatuses({ isActive: true });
+      res.json({ success: true, statuses });
+    } catch (error) {
+      console.error('Error fetching workflow statuses:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to fetch workflow statuses' 
+      });
+    }
+  });
+  
   // Event Booking Routes
   
   // POST /api/bookings - Create a new event booking from form data
