@@ -39,6 +39,16 @@ function Router() {
     select: (data: any) => data?.bookings || [], // Unwrap the server response
   });
 
+  // Query to fetch workflow statuses for status slug to ID conversion
+  const { data: workflowStatusesData } = useQuery<{
+    success: boolean;
+    statuses: Array<{ id: number; slug: string; name: string; }>;
+  }>({
+    queryKey: ['/api/workflow-statuses'],
+    enabled: currentView === 'admin' && isAuthenticated && !!user?.isAdmin,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
   // Public view only shows calendar blocked slots, no need for detailed bookings
   const bookings = adminBookings as EventBookingWithStatusAndType[];
   
@@ -65,7 +75,15 @@ function Router() {
   // Mutation for updating booking status (with activity logging)
   const updateStatusMutation = useMutation({
     mutationFn: async ({ bookingId, status }: { bookingId: number; status: string }) => {
-      const response = await apiRequest('PUT', `/api/bookings/${bookingId}`, { status });
+      // Convert status slug to status ID
+      const workflowStatuses = workflowStatusesData?.statuses || [];
+      const statusRecord = workflowStatuses.find(s => s.slug === status);
+      
+      if (!statusRecord) {
+        throw new Error(`Invalid status: ${status}`);
+      }
+      
+      const response = await apiRequest('PUT', `/api/bookings/${bookingId}`, { statusId: statusRecord.id });
       return await response.json();
     },
     onSuccess: () => {
